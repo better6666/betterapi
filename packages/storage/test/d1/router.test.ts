@@ -1,0 +1,230 @@
+/**
+ * `TenantDatabaseRouter` against REAL bindings (JOB 3).
+ *
+ * The property under test is that routing is **physical**: two tenants get two
+ * genuinely different databases, and every unresolvable tenant is an error and
+ * never a fallback. A router that silently returned the control database on a
+ * miss would put one tenant's money in the account-global ledger, which is the
+ * exact failure the tenant storage topology exists to prevent — so most of this
+ * file is about the refusals.
+ */
+import { env } from "cloudflare:test";
+import { beforeAll, describe, expect, test } from "vitest";
+import {
+  BackendDispatchingTenantDatabaseRouter,
+  ControlDatabaseTenantRegistry,
+  D1_BINDING_STRATEGIES,
+  DurableObjectTenantDatabaseRouter,
+  type EnvBindingTenantDatabaseRouter,
+  SharedDatabaseTenantRouter,
+  requireAtomicBatch,
+} from "../../src/index.js";
+import { TENANT_A, TENANT_B, TENANT_C, setupDatabases } from "./harness.js";
+
+let router: EnvBindingTenantDatabaseRouter;
+
+beforeAll(async () => {
+  router = await setupDatabases();
+});
+
+describe("EnvBindingTenantDatabaseRouter — resolution", () => {
+  test("resolves a registered tenant to its own native binding", async () => {
+    const handle = await router.forTenant(TENANT_A);
+    expect(handle.tenantId).toBe(TENANT_A);
+    expect(handle.source).toBe("native_binding");
+    expect(handle.supportsAtomicBatch).toBe(true);
+    expect(handle.schemaVersion).toBe(1);
+  });
+
+  test("two tenants get two PHYSICALLY different databases", async () => {
+    const a = await router.forTenant(TENANT_A);
+    const b = await router.forTenant(TENANT_B);
+    expect(a.db).not.toBe(b.db);
+
+    // Prove it with data, not identity: a row written through A is absent in B.
+    await a.db
+      .prepare(
+        "INSERT INTO projects (id, tenant_id, name, slug, created_at_unix, updated_at_unix) " +
+          "VALUES ('p_route', ?, 'n', 'route-probe', 1, 1) ON CONFLICT (id) DO NOTHING",
+      )
+      .bind(TENANT_A)
+      .run();
+    const inA = await a.db.prepare("SELECT id FROM projects WHERE id = 'p_route'").first();
+    const inB = await b.db.prepare("SELECT id FROM projects WHERE id = 'p_route'").first();
+    expect(inA).not.toBeNull();
+    expect(inB).toBeNull();
+  });
+
+  test("the control database is NOT any tenant's database", async () => {
+    const a = await router.forTenant(TENANT_A);
+    expect(router.control()).not.toBe(a.db);
+    // The control schema has no `wallets` table; the tenant schema has no
+    // `plans` table. Each miss proves the split is physical, not conventional.
+    await expect(router.control().prepare("SELECT * FROM wallets").all()).rejects.toThrow();
+    await expect(a.db.prepare("SELECT * FROM plans").all()).rejects.toThrow();
+  });
+
+  test("provisionedTenants lists every registration, ascending", async () => {
+    expect(await router.provisionedTenants()).toEqual([TENANT_A, TENANT_B, TENANT_C]);
+  });
+});
+
+describe("BackendDispatchingTenantDatabaseRouter — migration routing", () => {
+  test("keeps pre-cutover tenants on the shared source until cutover", async () => {
+    await env.CONTROL_DB.prepare(
+      "UPDATE tenant_databases SET storage_backend = 'durable_object', migration_state = 'copying', migration_epoch = 1 WHERE tenant_id = ?",
+    )
+      .bind(TENANT_A)
+      .run();
+    const dispatch = new BackendDispatchingTenantDatabaseRouter(env.CONTROL_DB, {
+      fallback: router,
+      durableObject: new DurableObjectTenantDatabaseRouter(env.TENANT_DATA, env.CONTROL_DB),
+      legacyShared: new SharedDatabaseTenantRouter(env.TENANT_DB_A),
+    });
+    try {
+      const preCutover = await dispatch.forTenant(TENANT_A);
+      expect(preCutover.source).toBe("shared_development");
+      expect(preCutover.db).toBe(env.TENANT_DB_A);
+      // Shared D1 has no native Durable Object alarm; the dispatcher must
+      // preserve that optional capability instead of turning legacy schedules
+      // into a runtime failure during the backfill window.
+      await expect(dispatch.rearmScheduleAlarm(TENANT_A)).resolves.toBeUndefined();
+
+      await env.CONTROL_DB.prepare(
+        "UPDATE tenant_databases SET migration_state = 'done' WHERE tenant_id = ?",
+      )
+        .bind(TENANT_A)
+        .run();
+      const postCutover = await dispatch.forTenant(TENANT_A);
+      expect(postCutover.source).toBe("durable_object");
+      expect(postCutover.db).not.toBe(env.TENANT_DB_A);
+    } finally {
+      await env.CONTROL_DB.prepare(
+        "UPDATE tenant_databases SET storage_backend = 'native_binding', migration_state = 'shared', migration_epoch = 0 WHERE tenant_id = ?",
+      )
+        .bind(TENANT_A)
+        .run();
+    }
+  });
+});
+
+describe("EnvBindingTenantDatabaseRouter — fail-closed refusals", () => {
+  test("an UNREGISTERED tenant is not_found, not the control database", async () => {
+    await expect(router.forTenant("tenant_unknown")).rejects.toMatchObject({
+      kind: "not_found",
+    });
+  });
+
+  test("a tenant registered WITHOUT a binding name is refused, not fallen back", async () => {
+    // tenant_c is provisioned but its Worker binding has not been deployed.
+    // This is the state a half-finished native-binding onboarding leaves.
+    await expect(router.forTenant(TENANT_C)).rejects.toThrow(/no native D1 binding_name/);
+  });
+
+  test("a registration naming a binding this Worker does not have is refused", async () => {
+    const registry = new ControlDatabaseTenantRegistry(env.CONTROL_DB);
+    await registry.upsert(
+      {
+        tenantId: "tenant_ghost",
+        bindingName: "TENANT_DB_UNBOUND",
+        schemaVersion: 1,
+      },
+      1,
+    );
+    await expect(router.forTenant("tenant_ghost")).rejects.toThrow(
+      /not a D1 database on this Worker's env/,
+    );
+  });
+
+  test("a registration naming a NON-D1 binding is refused", async () => {
+    const registry = new ControlDatabaseTenantRegistry(env.CONTROL_DB);
+    await registry.upsert(
+      {
+        tenantId: "tenant_wrongkind",
+        // A real binding on env, but it is a plain JSON var, not a database.
+        bindingName: "TENANT_MIGRATIONS",
+        schemaVersion: 1,
+      },
+      1,
+    );
+    await expect(router.forTenant("tenant_wrongkind")).rejects.toThrow(
+      /not a D1 database on this Worker's env/,
+    );
+  });
+
+  test("an empty tenant id is refused rather than routed anywhere", async () => {
+    await expect(router.forTenant("")).rejects.toThrow(/non-empty tenant id/);
+  });
+});
+
+describe("Registry", () => {
+  test("upsert is idempotent by tenant id and can later attach a binding name", async () => {
+    const registry = new ControlDatabaseTenantRegistry(env.CONTROL_DB);
+    await registry.upsert(
+      {
+        tenantId: "tenant_late",
+        schemaVersion: 1,
+      },
+      100,
+    );
+    expect((await registry.get("tenant_late"))?.bindingName).toBeUndefined();
+
+    await registry.upsert(
+      {
+        tenantId: "tenant_late",
+        bindingName: "TENANT_DB_C",
+        schemaVersion: 1,
+      },
+      200,
+    );
+    const after = await registry.get("tenant_late");
+    expect(after?.bindingName).toBe("TENANT_DB_C");
+    // Still ONE row — the second call updated rather than duplicated.
+    expect((await registry.list()).filter((r) => r.tenantId === "tenant_late")).toHaveLength(1);
+  });
+
+  test("an unknown tenant reads back as undefined", async () => {
+    const registry = new ControlDatabaseTenantRegistry(env.CONTROL_DB);
+    expect(await registry.get("nobody")).toBeUndefined();
+  });
+});
+
+describe("requireAtomicBatch", () => {
+  test("admits a native handle", async () => {
+    const native = await router.forTenant(TENANT_A);
+    expect(requireAtomicBatch(native, "op")).toBe(native);
+  });
+});
+
+describe("SharedDatabaseTenantRouter", () => {
+  test("hands every tenant the same database and labels itself as such", async () => {
+    const shared = new SharedDatabaseTenantRouter(env.TENANT_DB_A, ["t1", "t2"]);
+    const one = await shared.forTenant("t1");
+    const two = await shared.forTenant("t2");
+    expect(one.db).toBe(two.db);
+    // The label is the point: a downstream reader can tell that this handle
+    // carries no physical isolation, even though its atomic primitives are real.
+    expect(one.source).toBe("shared_development");
+    expect(one.supportsAtomicBatch).toBe(true);
+    expect(await shared.provisionedTenants()).toEqual(["t1", "t2"]);
+  });
+
+  test("still refuses an empty tenant id", async () => {
+    const shared = new SharedDatabaseTenantRouter(env.TENANT_DB_A);
+    await expect(shared.forTenant("")).rejects.toThrow(/non-empty tenant id/);
+  });
+});
+
+describe("D1_BINDING_STRATEGIES", () => {
+  test("records exactly the supported tenant storage sources", () => {
+    expect(Object.keys(D1_BINDING_STRATEGIES).sort()).toEqual([
+      "durable_object",
+      "native_binding",
+      "shared_development",
+    ]);
+    expect(D1_BINDING_STRATEGIES.native_binding.atomicBatch).toBe(true);
+    expect(D1_BINDING_STRATEGIES.native_binding.returning).toBe(true);
+    expect(D1_BINDING_STRATEGIES.durable_object.atomicBatch).toBe(true);
+    expect(D1_BINDING_STRATEGIES.shared_development.atomicBatch).toBe(true);
+  });
+});

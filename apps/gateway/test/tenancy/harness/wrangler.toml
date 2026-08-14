@@ -1,0 +1,159 @@
+# Wrangler config for the TENANCY harness Worker (test/tenancy/harness/worker.ts).
+#
+# Not a deployable. It exists so `@cloudflare/vitest-pool-workers` can boot a
+# Worker that has FOUR REAL, PHYSICALLY DISTINCT D1 databases — a control
+# database plus three tenant databases — which is the only way to observe the
+# property this slice exists to deliver: a write made through tenant A's handle
+# is INVISIBLE through tenant B's. With one database the isolation test would
+# pass against a router that ignored its argument entirely.
+#
+# `apps/gateway/wrangler.toml` cannot carry these yet: adding per-tenant
+# `[[d1_databases]]` stanzas is the integrate step's line (see the WIRING block
+# in `src/tenancy/index.ts`), and this slice may not edit that file.
+#
+# Note what is deliberately NOT bound: `DB`. Without it `depsFromEnv` skips the
+# D1 key resolver and authenticates from `GATEWAY_NATIVE_API_KEYS` below, so
+# this harness needs no tenant `api_keys` seeding to drive a real request.
+
+name = "ferrogate-gateway-tenancy-harness"
+main = "worker.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ---------------------------------------------------------------------------
+# The CONTROL database — account-global. Since Zero-D1 S5 (#914) retired the
+# `d1_compat` control-storage mode, the RESOLVER's control store is the
+# `CONTROL_DATA` object facade bound below (see `GATEWAY_CONTROL_STORAGE`), and
+# that is where `tenant_databases` is seeded and read.
+#
+# This NATIVE `CONTROL_DB` D1 is retained ONLY as a RAW HANDLE for the specs
+# that introspect the schema SPLIT directly (`resolver.spec.ts` reads
+# `sqlite_master` on `env.CONTROL_DB` to prove the control tables — and NOT
+# `wallets` — live here while the tenant tables live in the per-tenant D1s). It
+# is migrated from the same `sql/d1-ts/control` files the object self-applies,
+# so the two schemas are byte-identical; the object is the store the router
+# actually reads.
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "CONTROL_DB"
+database_name = "ferrogate-control"
+database_id = "tenancy-harness-control"
+migrations_dir = "../../../../../sql/d1-ts/control"
+
+# ===========================================================================
+# COPY THIS SHAPE INTO apps/gateway/wrangler.toml, ONE PER PROVISIONED TENANT.
+# `binding` is the exact string stored in `tenant_databases.binding_name`; the
+# router reads `env[binding]` at RUNTIME over this deploy-time-declared set.
+# ===========================================================================
+[[d1_databases]]
+binding = "TENANT_DB_ACME"
+database_name = "ferrogate-tenant-acme"
+database_id = "tenancy-harness-tenant-acme"
+migrations_dir = "../../../../../sql/d1-ts/tenant"
+
+[[d1_databases]]
+binding = "TENANT_DB_GLOBEX"
+database_name = "ferrogate-tenant-globex"
+database_id = "tenancy-harness-tenant-globex"
+migrations_dir = "../../../../../sql/d1-ts/tenant"
+# ===========================================================================
+
+# `TENANT_DB_INITECH` is deliberately NOT declared. `resolver.spec.ts` registers
+# a tenant that names it and asserts the router FAILS CLOSED — the control
+# registry and the deployed config disagreeing must be an error, never a
+# fallback to CONTROL_DB.
+
+# ---------------------------------------------------------------------------
+# TENANT_DATA — the DEFAULT topology (#819). One SQLite-backed Durable Object
+# per tenant, addressed `idFromName(tenant_id)`.
+#
+# Note what this stanza does NOT need, and compare it with the two
+# `[[d1_databases]]` blocks above: no per-tenant entry, no `database_id`, no
+# `migrations_dir`, and no equivalent of the `TENANT_DB_INITECH` omission,
+# because there is no per-tenant deploy-time state to omit. ONE binding serves
+# every tenant the suite invents, which is the entire scaling argument written
+# out in config.
+#
+# `new_sqlite_classes`, never `new_classes`: the latter deploys cleanly and
+# silently swaps in the key-value backend, at which point `ctx.storage.sql` does
+# not exist. Production uses `[exports.TenantDataObject]`; this standalone
+# harness retains a legacy migration because its namespace is separate and
+# throwaway, and the pool only needs the SQLite backend here.
+#
+# `durable-object.spec.ts` drives this binding. It still proves the same
+# fail-closed property the `TENANT_DB_INITECH` omission proves for D1 — a
+# provisioned tenant that cannot be reached must ERROR — but the mechanism is
+# the object's own admission guard rather than a missing stanza, because a
+# missing stanza is no longer a state this topology can be in.
+# ---------------------------------------------------------------------------
+[[durable_objects.bindings]]
+name = "TENANT_DATA"
+class_name = "TenantDataObject"
+
+# ---------------------------------------------------------------------------
+# CONTROL_DATA — the control database as the singleton SQLite-backed
+# `ControlDataObject` (Zero-D1 S1/S5, #877/#914), addressed everywhere as
+# `env.CONTROL_DATA.idFromName("control")`. This mirrors the deployed gateway's
+# `[[durable_objects.bindings]]` for CONTROL_DATA.
+#
+# It is the store `controlDatabaseFrom(env)` resolves for the resolver's
+# `control()` and `provisionedTenants()`, and — under the `binding*` routing
+# modes — the `tenant_databases` registry the router reads. The object
+# self-migrates its schema on first access, so no `migrations_dir` /
+# `applyD1Migrations` step exists for it the way it does for the native
+# `CONTROL_DB` D1 above.
+# ---------------------------------------------------------------------------
+[[durable_objects.bindings]]
+name = "CONTROL_DATA"
+class_name = "ControlDataObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TenantDataObject", "ControlDataObject"]
+
+[vars]
+
+# The harness exercises the NATIVE-binding tenant router, so its control posture
+# is explicit. Since Zero-D1 S5 (#914) the `d1_compat` mode is retired and the
+# only control-storage posture is the `CONTROL_DATA` object, exactly as the
+# deployed gateway defaults to. `controlDatabaseFrom(env)` therefore resolves the
+# CONTROL_DATA facade bound above — never the native `CONTROL_DB` handle.
+GATEWAY_CONTROL_STORAGE = "durable_object"
+
+# --- routing posture -------------------------------------------------------
+# The STRICT posture: every tenant-scoped credential must resolve to a routable
+# database before its request is served. That is what makes the HTTP-level
+# unmount gate in `mount.spec.ts` observable through `SELF.fetch`.
+GATEWAY_TENANT_DB_ROUTING = "binding_strict"
+
+# --- credentials -----------------------------------------------------------
+# Read by `ConfiguredApiKeyAuthenticator.fromEnv` (src/adapters.ts). Every key
+# holds only `models.read`, so `GET /v1/models` — the cheapest authenticated
+# contract operation — is what the specs drive.
+#
+#  fg_acme    -> tenant_acme    : registered, binding declared      => 200
+#  fg_globex  -> tenant_globex  : registered, binding declared      => 200
+#  fg_initech -> tenant_initech : registered, binding NOT declared  => 503
+#  fg_ghost   -> tenant_ghost   : not in tenant_databases at all    => 503
+#  fg_unbound -> tenant_unbound : registered with binding_name NULL => 503
+#  fg_root                      : platform operator, no tenancy     => 200
+GATEWAY_NATIVE_API_KEYS = '''
+[
+  { "key": "fg_acme",    "id": "key_acme",    "tenant_id": "tenant_acme",    "scopes": ["models.read"] },
+  { "key": "fg_globex",  "id": "key_globex",  "tenant_id": "tenant_globex",  "scopes": ["models.read"] },
+  { "key": "fg_initech", "id": "key_initech", "tenant_id": "tenant_initech", "scopes": ["models.read"] },
+  { "key": "fg_ghost",   "id": "key_ghost",   "tenant_id": "tenant_ghost",   "scopes": ["models.read"] },
+  { "key": "fg_unbound", "id": "key_unbound", "tenant_id": "tenant_unbound", "scopes": ["models.read"] }
+]
+'''
+GATEWAY_STATIC_API_KEYS = '''
+[ { "key": "fg_root", "id": "key_root", "platform_operator": true } ]
+'''
+SELF_HOSTED_WORKER_REGISTRY = "[]"
+TENANCY_LIFECYCLE = "{}"
+TENANT_RBAC_ACTIONS = "{}"
+GATEWAY_DEV_AUTH = "false"
+GATEWAY_PROVIDERS = "[]"
+GATEWAY_MODELS = "[]"
+ASSET_ENTITLEMENTS = "{}"
+GATEWAY_QUOTA_POLICIES = "[]"

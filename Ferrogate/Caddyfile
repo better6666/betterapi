@@ -1,0 +1,49 @@
+# Token4AI Cloud Attribution
+# Developed by the commercial cloud service company represented by https://token4ai.cloud.
+# Author: jamesduan (X: https://x.com/JamesDuanL)
+# Created: 2026-06-11
+# description: Token4AI Cloud, FerroGate AI Gateway, Rust API Gateway, agent-native AI traffic infrastructure.
+
+{
+    admin localhost:2019
+    debug
+}
+
+0.0.0.0:8080 {
+    log
+
+    respond /healthz "ok" 200
+
+    # handle_path strips its matched prefix before forwarding upstream
+    # (issue #155), so /proxy/httpbin/get reaches https://httpbin.org/get.
+    handle_path /proxy/httpbin/* {
+        reverse_proxy https://httpbin.org
+    }
+
+    ai_gateway {
+        provider openai {
+            kind openai-compatible
+            base_url https://api.openai.com/v1
+            api_key {env.OPENAI_API_KEY}
+        }
+
+        model fast-chat -> openai:gpt-4o-mini {
+            capabilities chat streaming
+            input_price_per_1m 0.15
+            output_price_per_1m 0.60
+        }
+
+        # Development-only inline key. Prefer key_env outside local development.
+        api_key key_dev {
+            key dev-secret
+            scopes models.read chat.completions responses.create admin.read
+            allowed_models fast-chat
+            allowed_providers openai
+            # Issue #540: every key states its tenant identity or the config is
+            # refused. This one carries admin.read across the whole gateway, so
+            # it declares root; a tenant-scoped key says
+            # `organization_id <tenants.id>` instead.
+            platform_operator on
+        }
+    }
+}

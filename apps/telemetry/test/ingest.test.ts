@@ -1,0 +1,314 @@
+/**
+ * OTLP/HTTP + JSON ingest, driven through the REAL exported Worker.
+ *
+ * `SELF.fetch` runs the deployed module in `workerd` with the REAL `TELEMETRY`
+ * Analytics Engine binding from `wrangler.toml`. Where a fact cannot be
+ * observed through the live binding (its only read API is off-platform SQL) or
+ * cannot be configured per-request (a deploy with no binding at all), the same
+ * exported `app` is driven with a substituted env — still the production
+ * composition root, never a router assembled here.
+ */
+import { SELF } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import app from "../src/index.js";
+import {
+  COLLECTOR_TOKEN,
+  RecordingDataset,
+  SERVICE,
+  SPAN_ID,
+  TENANT,
+  TEST_MAX_BODY_BYTES,
+  TRACE_ID,
+  ThrowingDataset,
+  authHeaders,
+  envWithSink,
+  envWithoutSink,
+  logsPayload,
+  metricsPayload,
+  tracesPayload,
+} from "./fixtures.js";
+
+interface Summary {
+  accepted: number;
+  dataPoints: number;
+  dropped: number;
+  partialSuccess?: Record<string, unknown>;
+}
+
+interface ErrorEnvelope {
+  error: { message: string; type: string; code: string; request_id: string | null };
+  limit?: number;
+  detail?: unknown;
+}
+
+function post(
+  path: string,
+  payload: unknown,
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  return SELF.fetch(`https://ferrogate.test${path}`, {
+    method: "POST",
+    headers: authHeaders(headers),
+    body: typeof payload === "string" ? payload : JSON.stringify(payload),
+  });
+}
+
+const SIGNALS = [
+  { path: "/v1/metrics", payload: metricsPayload, rejectedField: "rejectedDataPoints" },
+  { path: "/v1/traces", payload: tracesPayload, rejectedField: "rejectedSpans" },
+  { path: "/v1/logs", payload: logsPayload, rejectedField: "rejectedLogRecords" },
+] as const;
+
+describe.each(SIGNALS)("POST $path", ({ path, payload, rejectedField }) => {
+  it("accepts a valid batch and reports what the sink took", async () => {
+    const res = await post(path, payload());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Summary;
+    // `dataPoints` is the count of writes the sink ACCEPTED — proof the record
+    // reached the Analytics Engine binding, not merely that it parsed.
+    expect(body).toEqual({ accepted: 1, dataPoints: 1, dropped: 0 });
+    expect(body.partialSuccess).toBeUndefined();
+  });
+
+  it("rejects a body that is not JSON with 400", async () => {
+    const res = await post(path, "{ this is not json");
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ErrorEnvelope;
+    expect(body.error.code).toBe("malformed_request_body");
+    expect(body.error.type).toBe("ferrogate_error");
+  });
+
+  it("rejects JSON that is not this signal's OTLP envelope with 400", async () => {
+    const res = await post(path, { nope: [] });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ErrorEnvelope;
+    expect(body.error.code).toBe("invalid_otlp_payload");
+    // Zod's issue list is surfaced so the client can see WHICH key was wrong.
+    expect(JSON.stringify(body.detail)).toContain("Required");
+  });
+
+  it("rejects a non-array envelope key with 400", async () => {
+    const wrongType = JSON.parse(JSON.stringify(payload())) as Record<string, unknown>;
+    const key = Object.keys(wrongType)[0] as string;
+    wrongType[key] = "not-an-array";
+    const res = await post(path, wrongType);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as ErrorEnvelope).error.code).toBe("invalid_otlp_payload");
+  });
+
+  it("rejects an oversized body with 413 and states the limit", async () => {
+    const fat = JSON.parse(JSON.stringify(payload())) as Record<string, unknown>;
+    (fat as { padding?: string }).padding = "x".repeat(TEST_MAX_BODY_BYTES * 2);
+    const serialized = JSON.stringify(fat);
+    expect(serialized.length).toBeGreaterThan(TEST_MAX_BODY_BYTES);
+
+    const res = await post(path, serialized);
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as ErrorEnvelope;
+    expect(body.error.code).toBe("payload_too_large");
+    expect(body.limit).toBe(TEST_MAX_BODY_BYTES);
+  });
+
+  it("answers 503 when the deploy has no Analytics Engine binding", async () => {
+    const res = await app.request(
+      `https://ferrogate.test${path}`,
+      { method: "POST", headers: authHeaders(), body: JSON.stringify(payload()) },
+      envWithoutSink(),
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as ErrorEnvelope;
+    expect(body.error.code).toBe("telemetry_sink_unavailable");
+    expect(body.error.message).toContain("Analytics Engine");
+  });
+
+  it("rejects a missing bearer token with 401", async () => {
+    const res = await SELF.fetch(`https://ferrogate.test${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload()),
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as ErrorEnvelope).error.code).toBe("unauthorized");
+  });
+
+  it("rejects a WRONG bearer token with 401, not 403", async () => {
+    const res = await SELF.fetch(`https://ferrogate.test${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${COLLECTOR_TOKEN}x`, "content-type": "application/json" },
+      body: JSON.stringify(payload()),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("fails CLOSED with 500 when COLLECTOR_TOKEN is unset", async () => {
+    const res = await app.request(
+      `https://ferrogate.test${path}`,
+      { method: "POST", headers: authHeaders(), body: JSON.stringify(payload()) },
+      { TELEMETRY: new RecordingDataset() },
+    );
+    expect(res.status).toBe(500);
+    expect(((await res.json()) as ErrorEnvelope).error.code).toBe(
+      "telemetry_collector_unconfigured",
+    );
+  });
+
+  it("refuses binary OTLP with 415 — Cloudflare runs no protobuf", async () => {
+    const res = await SELF.fetch(`https://ferrogate.test${path}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${COLLECTOR_TOKEN}`,
+        "content-type": "application/x-protobuf",
+      },
+      // `\0` as the ESCAPE, never the raw byte: a literal NUL makes this file
+      // binary to git and grep (`apps/gateway/test/source-nul-bytes.test.ts`,
+      // issue #736). Identical bytes on the wire.
+      body: "\0\u0001binary",
+    });
+    expect(res.status).toBe(415);
+    expect(((await res.json()) as ErrorEnvelope).error.code).toBe("unsupported_media_type");
+  });
+
+  it("answers 405 for a non-POST method — the route exists", async () => {
+    const res = await SELF.fetch(`https://ferrogate.test${path}`, { method: "GET" });
+    expect(res.status).toBe(405);
+    expect(((await res.json()) as ErrorEnvelope).error.code).toBe("method_not_allowed");
+  });
+
+  it("reports a sink refusal as dropped + OTLP partialSuccess, still 200", async () => {
+    // An Analytics Engine write that throws must not abort the batch, and must
+    // never be reported as accepted.
+    const dataset = new ThrowingDataset();
+    const res = await app.request(
+      `https://ferrogate.test${path}`,
+      { method: "POST", headers: authHeaders(), body: JSON.stringify(payload()) },
+      envWithSink(dataset),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Summary;
+    expect(dataset.calls).toBe(1);
+    expect(body.accepted).toBe(1);
+    expect(body.dataPoints).toBe(0);
+    expect(body.dropped).toBe(1);
+    expect(body.partialSuccess?.[rejectedField]).toBe(1);
+  });
+});
+
+describe("unknown routes", () => {
+  it("answers 404 with the error envelope", async () => {
+    const res = await SELF.fetch("https://ferrogate.test/v1/nope", { method: "POST" });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as ErrorEnvelope;
+    expect(body.error.code).toBe("not_found");
+    expect(body.error.message).toContain("/v1/nope");
+  });
+});
+
+describe("the sink receives the exact data points (metrics)", () => {
+  it("writes one AE point per metric data point, tenant-indexed", async () => {
+    const dataset = new RecordingDataset();
+    const res = await app.request(
+      "https://ferrogate.test/v1/metrics",
+      { method: "POST", headers: authHeaders(), body: JSON.stringify(metricsPayload()) },
+      envWithSink(dataset),
+    );
+    expect(res.status).toBe(200);
+    expect(dataset.points).toEqual([
+      {
+        // Exactly one index: the tenant, taken from the resource attributes.
+        indexes: [TENANT],
+        // Fixed blob positions: kind, name, service, scope, metric kind, attrs.
+        blobs: ["metric", "ferrogate.requests.total", SERVICE, "ferrogate", "sum", "status=200"],
+        doubles: [42],
+      },
+    ]);
+  });
+
+  it("prefers the x-ferrogate-tenant header over the resource attribute", async () => {
+    const dataset = new RecordingDataset();
+    await app.request(
+      "https://ferrogate.test/v1/metrics",
+      {
+        method: "POST",
+        headers: authHeaders({ "x-ferrogate-tenant": "tenant-from-header" }),
+        body: JSON.stringify(metricsPayload()),
+      },
+      envWithSink(dataset),
+    );
+    expect(dataset.points[0]?.indexes).toEqual(["tenant-from-header"]);
+  });
+});
+
+describe("the sink receives the exact data points (traces)", () => {
+  it("writes a span summary with the duration computed in BigInt nanos", async () => {
+    const dataset = new RecordingDataset();
+    await app.request(
+      "https://ferrogate.test/v1/traces",
+      { method: "POST", headers: authHeaders(), body: JSON.stringify(tracesPayload()) },
+      envWithSink(dataset),
+    );
+    const point = dataset.points[0];
+    expect(point?.indexes).toEqual([TENANT]);
+    expect(point?.blobs?.slice(0, 4)).toEqual(["span", "ferrogate.request", TRACE_ID, SPAN_ID]);
+    expect(point?.blobs).toContain("http.route=/v1/chat/completions");
+    // 1700000000500000000 - 1700000000000000000 ns = 500 ms; span kind 2.
+    expect(point?.doubles).toEqual([500, 2]);
+  });
+});
+
+describe("the sink receives the exact data points (logs)", () => {
+  it("writes the log record with its severity and body", async () => {
+    const dataset = new RecordingDataset();
+    await app.request(
+      "https://ferrogate.test/v1/logs",
+      { method: "POST", headers: authHeaders(), body: JSON.stringify(logsPayload()) },
+      envWithSink(dataset),
+    );
+    const point = dataset.points[0];
+    expect(point?.indexes).toEqual([TENANT]);
+    expect(point?.blobs).toEqual([
+      "log",
+      "ERROR",
+      SERVICE,
+      "ferrogate",
+      TRACE_ID,
+      SPAN_ID,
+      "upstream refused the request",
+      "provider=openai",
+    ]);
+    expect(point?.doubles).toEqual([17]);
+  });
+});
+
+describe("batch resilience", () => {
+  it("skips one unusable span without failing the batch", async () => {
+    const dataset = new RecordingDataset();
+    const res = await app.request(
+      "https://ferrogate.test/v1/traces",
+      {
+        method: "POST",
+        headers: authHeaders(),
+        // No traceId/spanId: uncorrelatable, so skipped — the good span lands.
+        body: JSON.stringify(tracesPayload([{ name: "orphan" }])),
+      },
+      envWithSink(dataset),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Summary;
+    expect(body).toEqual({
+      accepted: 1,
+      dataPoints: 1,
+      dropped: 1,
+      partialSuccess: {
+        rejectedSpans: 1,
+        errorMessage: "1 unusable record(s), 0 over the per-invocation write cap",
+      },
+    });
+    expect(dataset.points).toHaveLength(1);
+  });
+
+  it("accepts an empty batch as a no-op", async () => {
+    const res = await post("/v1/metrics", { resourceMetrics: [] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ accepted: 0, dataPoints: 0, dropped: 0 });
+  });
+});

@@ -1,0 +1,606 @@
+name = "ferrogate-control-plane"
+main = "src/worker.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# FALLBACK vars for the ports in `src/adapters.ts`.
+#
+# These are no longer the credential path: `resolveApiKeys` resolves operator
+# keys from the control database's HASHED `static_api_keys` table and consults
+# `CONTROL_PLANE_STATIC_API_KEYS` only when the database has no matching row
+# (`src/store/api_keys.ts`); `resolveRbac` does the same over
+# `tenant_role_bindings` for `TENANT_RBAC_ACTIONS`. Provisioning rows is
+# therefore how a real deployment states its credentials, and a stale var can
+# never re-enable a key the database disabled.
+#
+# `TENANCY_LIFECYCLE` moved the same way: `resolveLifecycle` gates on the
+# `tenant-accounts` / `projects` / `workspaces` rows the admin surface writes
+# (`src/store/lifecycle.ts`, walking the whole tenant -> project -> workspace
+# chain like Rust's `resolve_lifecycle_chain`), and reads this map only for a
+# tenancy that has no durable row. Suspending a tenant is now
+# `PATCH /admin/v1/tenant-accounts/{id} {"status":"suspended"}` and takes effect
+# on that tenant's next request; it used to need an edit here and a redeploy.
+#
+# `CONTROL_PLANE_NATIVE_API_KEYS` is the one that CANNOT move: a durable virtual
+# key's scopes live in the per-tenant database and Workers resolve D1 bindings at
+# deploy time, so this Worker cannot read them — see the kept platform-limit
+# PORT-TODO in `src/store/api_keys.ts`.
+#
+# `CONTROL_PLANE_SEED` now seeds ONLY the in-memory fallback store. With the
+# `DB` binding below present the Worker uses the D1 store and ignores it; it is
+# kept so a database-less local run (`CONTROL_PLANE_STORE = "memory"`) still has
+# a way to state its world.
+#
+# `CONTROL_PLANE_STORE` is deliberately UNSET: absent means "D1 whenever `DB` is
+# bound", so a deployment that provisions a database cannot accidentally serve
+# an in-memory store whose writes vanish with the isolate. Set it to `"memory"`
+# only for a local run with no database.
+#
+# `ADMIN_CONSOLE_ALLOWED_ORIGIN` is deliberately ABSENT: with no console origin
+# configured the `OPTIONS /admin/{*rest}` preflight surface does not exist at
+# all, which is the contract's `dynamic_surfaces` semantics. Set it only for a
+# deployment that actually fronts an admin console.
+# ---------------------------------------------------------------------------
+# PER-TENANT BYOK (issue #682) — FERROGATE_BYOK_MASTER_KEY
+# ---------------------------------------------------------------------------
+# The FLEET-WIDE AES-256 key `PUT /admin/v1/provider-credentials/{alias}` seals
+# a tenant's own provider credential with, and the SAME key `apps/gateway`
+# opens it with — the two Workers must be given the identical secret or the
+# gateway cannot use what this Worker registers.
+#
+# It is a SECRET and is deliberately NOT declared in [vars]:
+#
+#   head -c 32 /dev/urandom | base64 | wrangler secret put FERROGATE_BYOK_MASTER_KEY
+#
+# ONE binding for the whole fleet, NOT one per tenant: Cloudflare Secrets Store
+# bindings resolve at DEPLOY time, so a per-tenant binding would mean a deploy
+# per tenant. The tenant-visible `alias -> credential` mapping is row data in
+# `tenant_provider_credentials` (sql/d1-ts/control/0003_*) instead, so
+# onboarding and rotation are an INSERT and an UPDATE.
+#
+# Absent ⇒ the three `/admin/v1/provider-credentials*` operations answer
+# 503 `byok_not_configured`; nothing else on this Worker is affected.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# SIEM EXPORT SINKS (issue #683) — SIEM_EXPORT_SINKS
+# ---------------------------------------------------------------------------
+# Where this deployment PUSHES evidence: `request_logs` (#664) and the
+# hash-chained `audit_events` (#684), delivered to a customer's Splunk, Datadog,
+# generic HTTPS collector or R2/S3 bucket with at-least-once semantics and a
+# durable, replayable cursor (`src/siem/pump.ts`, `docs/siem-export.md`).
+#
+# `"[]"` — the committed value — means NO EGRESS. That is the deliberate
+# default: evidence leaving the platform is an operator decision, never an
+# accident of deployment.
+#
+# Shape (one object per sink; only `id`, `tenant` and `destination` are
+# required):
+#
+#   [{"id":"acme-splunk",
+#     "tenant":"acme",
+#     "streams":["request_logs","audit_events"],
+#     "batch_size":500,
+#     "max_batches_per_tick":20,
+#     "visibility_lag_seconds":60,
+#     "destination":{"kind":"http",
+#                    "endpoint":"https://http-inputs-acme.splunkcloud.com/services/collector/raw",
+#                    "auth":{"header":"Authorization","prefix":"Splunk ",
+#                            "secret_ref":"env://ACME_SPLUNK_HEC_TOKEN"}},
+#     "replay":{"epoch":1,"from_unix":1753900000}}]
+#
+# THREE THINGS THIS FILE CANNOT BE USED TO DO, enforced by the parser in
+# `src/siem/config.ts` rather than by convention:
+#
+#   1. A sink with NO `tenant` does not parse. Every read the pump makes is
+#      fenced to one tenant, so no configuration can produce a cross-tenant
+#      export — including one that would hand a tenant the PLATFORM's own
+#      un-attributed rows.
+#   2. `secret_ref` must be an `env://` REFERENCE. This file is committed
+#      plaintext, so an inline token would be a credential in git. Provision the
+#      referenced name with `wrangler secret put ACME_SPLUNK_HEC_TOKEN` — the
+#      name is per-deployment, which is why it cannot be listed here.
+#   3. An `http` endpoint must be `https`.
+#
+# REPLAY: bump `replay.epoch` and set `replay.from_unix` to re-deliver a window
+# (a SIEM outage, a re-index). The applied epoch is stored on the cursor row, so
+# the rewind happens exactly once however many ticks read this config.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# CUSTOM DOMAIN CERTIFICATES (issue #738) — the four SITE_DOMAIN_CF_* knobs
+# ---------------------------------------------------------------------------
+# `GET /admin/v1/site-domains/{hostname}` reports a `certificate_status`. It has
+# to, because a custom domain whose certificate has not issued fails at the
+# EDGE: the request never reaches this platform, nothing is logged here, and
+# without this field an operator sees `verified: true` next to a domain that
+# does not work.
+#
+# PRODUCT: Cloudflare for SaaS CUSTOM HOSTNAMES
+# (`/zones/{zone_id}/custom_hostnames`), not Workers Custom Domains. A Workers
+# Custom Domain needs the hostname on a zone in THIS account — i.e. every
+# customer hands us their zone — and FerroGate's tenants keep their own DNS, so
+# it is inapplicable. That is the whole reason. (Its per-hostname certificate
+# state IS readable — the domain row carries a `cert_id` — but it takes a second
+# call to a different certificate API, on a zone we would have to own.) See
+# `packages/cloudflare/src/custom-hostnames.ts` for the full comparison and what
+# the choice costs (a paid entitlement, billed per active custom hostname).
+#
+#   SITE_DOMAIN_CERTIFICATES  — the backend switch. `"cloudflare_for_saas"`,
+#       `"static"`, or ABSENT. Deliberately ABSENT here and DEFAULTING to
+#       unconfigured: reading certificate state spends an outbound Cloudflare
+#       call and a token, and a deployment must not start making calls because
+#       it upgraded. Unconfigured reports `certificate_status: "unconfigured"`,
+#       which is a statement about this deployment, not about the domain.
+#
+#   SITE_DOMAIN_CF_ZONE_ID    — the FALLBACK-ORIGIN zone in this account that
+#       every tenant CNAMEs at. NEVER a tenant's own zone. Not declared in
+#       [vars] because a zone id is a real account resource and this file is
+#       committed: supply it at deploy time.
+#
+#   SITE_DOMAIN_CF_ACCOUNT_ID — the account the zone belongs to. Same reason.
+#
+#   SITE_DOMAIN_CF_API_TOKEN  — a SECRET, never a [vars] entry:
+#           wrangler secret put SITE_DOMAIN_CF_API_TOKEN --name ferrogate-control-plane
+#       It needs the ZONE-level "SSL and Certificates: Edit" permission group on
+#       the fallback-origin zone. An otherwise-complete ACCOUNT token cannot
+#       reach `/zones/.../custom_hostnames`, and the failure arrives as an opaque
+#       403 at first use — which is why `packages/cloudflare/src/scopes.ts`
+#       carries that row and `preflight()` names it.
+#
+#   SITE_DOMAIN_CERTIFICATE_RECORDS — the `"static"` backend's curated
+#       `hostname -> custom_hostnames row` table, in Cloudflare's own result
+#       shape. It is the deterministic counterpart of the DNS resolver's curated
+#       answer document, and it is safe in a way that one is not: no certificate
+#       state gates serving, so a wrong entry misleads a human rather than
+#       authorising a request.
+#
+# WHAT THIS DEPLOYMENT STILL CANNOT DO FOR YOU, and there is no code that can:
+# the Cloudflare for SaaS entitlement, the fallback-origin zone and its DNS
+# record, the Worker route that covers it, and the tenant's CNAME are all
+# deploy-time acts outside this Worker. `docs/assets/custom-domains.md` §6 has
+# the checklist.
+# ---------------------------------------------------------------------------
+
+[vars]
+# Zero-D1 S5 (#881): the backfill has populated CONTROL_DATA and the cut-over is
+# done. `durable_object` is the only resolvable posture — the legacy `DB`
+# fallback and its `[[d1_databases]]` stanza are gone. There is no `d1_compat`
+# leg to fall back to.
+CONTROL_PLANE_CONTROL_STORAGE = "durable_object"
+CONTROL_PLANE_NATIVE_API_KEYS = "[]"
+CONTROL_PLANE_STATIC_API_KEYS = "[]"
+TENANCY_LIFECYCLE = "{}"
+TENANT_RBAC_ACTIONS = "{}"
+CONTROL_PLANE_SEED = "{}"
+SIEM_EXPORT_SINKS = "[]"
+
+# ---------------------------------------------------------------------------
+# Bootstrap model-catalog import (#892) — OPTIONAL fallback bindings
+# ---------------------------------------------------------------------------
+#
+# `POST /admin/v1/config/import-model-catalog` (`src/routes/admin_config_ops.ts`)
+# reads the deployed data-plane env tables and account block so an operator can
+# import them into the platform catalog:
+#
+#   GATEWAY_PROVIDERS   — the gateway provider table JSON;
+#   GATEWAY_MODELS      — the gateway model registry JSON;
+#   GATEWAY_CLOUDFLARE  — the account-level `[cloudflare]` block.
+#
+# They are DELIBERATELY NOT declared in `[vars]` here: the source of truth is
+# `apps/gateway/wrangler.toml`, and duplicating the tables into a second Worker's
+# committed config is how the two come to disagree. The import request body
+# carries the same three fields, so the normal flow supplies them per-call and
+# these bindings are read ONLY as an optional fallback when the body omits one.
+# Named here (not declared) so an operator can discover the knobs exist.
+
+# ---------------------------------------------------------------------------
+# Spend burn-rate anomaly + forecast alerts (#697) — `src/finops/notify.ts`
+# ---------------------------------------------------------------------------
+#
+# DETECTION IS ALWAYS ON and needs none of these: the pass runs on the Cron
+# Trigger tick below, costs two fleet-wide aggregate queries, and fills
+# `spend_anomaly_episodes` regardless. `GET /admin/v1/spend-anomalies` reads
+# that ledger. A tenant opts OUT with `quota_policies.spend_anomaly_enabled = 0`.
+#
+# These vars configure DELIVERY only.
+#
+# Unset ⇒ `spendAlertDeliveryFrom` falls back to `BILLING_ALERTS_WEBHOOK_URL`
+# (the #170 budget-alert receiver, declared in `apps/gateway/wrangler.toml`),
+# because every deployment that already cares about spend alerts has one and a
+# feature that is off until somebody notices it exists leaves the issue's
+# premise true. The payload carries `"type": "spend_anomaly"` so a receiver can
+# route the two apart; set this var instead when they should go to different
+# endpoints.
+#
+# A malformed value disables DELIVERY and nothing else — a configuration typo
+# must cost a webhook, never the detection history.
+SPEND_ANOMALY_WEBHOOK_URL = ""
+SPEND_ANOMALY_WEBHOOK_TIMEOUT_SECS = "5"
+# `SPEND_ANOMALY_WEBHOOK_SIGNING_SECRET` is deliberately NOT here: it is the
+# HMAC key every receiver authenticates an alert with, so this secret goes in
+# with `wrangler secret put`, never as a plaintext var. Absent ⇒ alerts are sent
+# unsigned, which is the documented posture and not a silent one.
+#
+# `BILLING_ALERTS_WEBHOOK_SIGNING_SECRET` is the same secret for the #170
+# receiver and is supplied the same way with `wrangler secret put`; it is read
+# here ONLY on the fallback path above, so that a deployment reusing the budget
+# receiver signs with the key that receiver already verifies. Both are named
+# here rather than declared so an operator can discover the knobs exist.
+
+# ---------------------------------------------------------------------------
+# D1: none — this Worker binds no D1 database
+# ---------------------------------------------------------------------------
+#
+# Zero-D1 S5 (#881) deleted the CONTROL database stanza (`binding = "DB"`,
+# `database_name = "ferrogate-control"`). The control store now reads
+# `CONTROL_DATA` (the singleton ControlDataObject) exclusively; there is no
+# `env.DB` control binding and no `d1_compat` fallback. `src/store/d1.ts`
+# resolves the control facade, not a `[[d1_databases]]` binding.
+#
+# #821 PR2d then deleted the LAST `[[d1_databases]]` stanza, LEGACY_TENANT_DB
+# (`database_name = "ferrogate-tenant"`) — the pre-M9 shared tenant database.
+# It survived only as the SOURCE of the tenant-by-tenant backfill, and that
+# backfill retired once every tenant was cut over to its own Durable Object
+# (`TENANT_DATA`). The `migrateTenantStorage` operator route now answers 410
+# Gone, so nothing reads this binding and there is nothing left to migrate.
+# This Worker therefore binds NO D1 database at all.
+
+# ---------------------------------------------------------------------------
+# PROMPT DEPLOYMENT LABELS — the `label -> revision` pointer (#694)
+# ---------------------------------------------------------------------------
+#
+# KV rather than D1, and the asymmetry is deliberate. The label RECORD is a D1
+# document like every other admin resource (`prompt-template-labels`), because
+# it is operator state that must survive, be listed, and be tenant-fenced by the
+# store. The POINTER is read by `apps/gateway` on the inference hot path, once
+# per request that references a prompt by label — a D1 query per request would
+# put a database round trip in front of every inference call, which is exactly
+# what an edge cache is for.
+#
+# Writes go D1-first, then KV (`src/routes/prompt.ts`): a crash between the two
+# leaves a label the operator can see that the edge has not adopted yet, which
+# is the safe direction. Deletes go KV-first for the mirror-image reason.
+#
+# `apps/gateway/wrangler.toml` declares the SAME namespace under the same
+# binding name. They must point at one namespace id at deploy time or the
+# gateway reads an empty key space and every labelled request fails closed —
+# loudly, but universally. See `docs/rewrite/CLOUD-VERIFICATION.md`.
+[[kv_namespaces]]
+binding = "PROMPT_LABELS"
+id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
+
+# ---------------------------------------------------------------------------
+# KV: the api_key_directory PROJECTION — the auth hot-path WRITE side (#882)
+# ---------------------------------------------------------------------------
+#
+# Zero-D1 S6. This Worker is the ONLY writer of the `api_key_directory` KV
+# projection the gateway reads AHEAD of the control-object RPC in HOP 1 of auth.
+# `src/store/virtual_keys.ts::projectVirtualKey` upserts a positive routing row on
+# create/enable and DELETEs it on revoke/disable/rotate, IN LOCKSTEP with the
+# control-object directory leg: the KV upsert goes AFTER the directory write
+# (never advertise a credential the control object lacks), and the KV delete goes
+# BEFORE it (a revoked key stops resolving from KV promptly). The KV op is
+# best-effort with respect to the authoritative D1 dual write — HOP 2 and the
+# `expirationTtl` backstop keep a stale routing row from authenticating anything.
+#
+# `apps/gateway/wrangler.toml` binds the SAME namespace under the same name and is
+# the READER. Both derive the key with `keyDirectoryProjectionKey` from
+# `@ferrogate/storage`; they must point at one namespace id at deploy time or the
+# gateway reads an empty key space and every cold miss simply takes the RPC path.
+#
+# `id` is a DOCUMENTED PLACEHOLDER — substitute the SAME namespace the gateway reads.
+[[kv_namespaces]]
+binding = "KEY_DIRECTORY"
+id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
+
+# ---------------------------------------------------------------------------
+# R2: the tamper-evidence ANCHOR bucket (#684)
+# ---------------------------------------------------------------------------
+#
+# `src/audit/anchor.ts` publishes each audit chain's head — `(chain_key,
+# head_seq, head_hash, row_count)`, a few hundred bytes — to this bucket on
+# every cron tick. `audit_events` rows are hash-chained in `DB`, which makes an
+# edit or a mid-trail deletion detectable from an export alone; it does NOT
+# catch a TAIL deletion or a wholesale re-forge, because both leave a perfect
+# chain. Comparing the trail against a head published OUTSIDE the database is
+# what catches those, so this binding is the half of the feature that a
+# database operator cannot quietly undo.
+#
+# ABSENT IS A SUPPORTED, DEGRADED POSTURE, not a crash: with no bucket bound the
+# tick reports `audit_anchor: "unconfigured"` and the deployment keeps the chain
+# but loses truncation detection. It is a WARN rather than a boot failure
+# because refusing to serve the control plane over a missing evidence bucket
+# would take the whole admin surface down for a compliance feature.
+#
+# TWO DEPLOYMENT NOTES THIS CODE CANNOT ENFORCE, both in
+# `docs/audit-tamper-evidence.md`:
+#
+#   1. Turn on R2 OBJECT LOCK / a retention policy for this bucket. The job
+#      never overwrites an anchor it has already written, so anchors are
+#      append-only from this Worker — but a principal holding R2 credentials can
+#      still delete one. Only a bucket-level retention rule closes that, and
+#      only the account owner can set it.
+#   2. Prefer an account (or at least credentials) SEPARATE from the one that
+#      owns the D1 database. An anchor is worth exactly as much as the
+#      difficulty of forging it and the database in the same breath.
+#
+# `bucket_name` is a documented PLACEHOLDER — the deploy step substitutes the
+# account's real bucket. R2 names are lowercase alphanumerics and hyphens.
+[[r2_buckets]]
+binding = "AUDIT_ANCHORS"
+bucket_name = "replace-at-deploy-ferrogate-audit-anchors"
+
+# ---------------------------------------------------------------------------
+# R2: the SIEM EXPORT bucket (#683)
+# ---------------------------------------------------------------------------
+#
+# Where a `{"kind":"r2"}` sink writes its NDJSON batches — the "R2-backed pump"
+# half of #683, and the one a customer fronts with S3-compatible tooling. Each
+# object is one delivered batch, keyed on the batch's own cursor position
+# (`src/siem/destination.ts::siemObjectKey`), so a re-delivery after a crash
+# overwrites the same object instead of piling a near-duplicate beside it.
+#
+# DELIBERATELY NOT THE `AUDIT_ANCHORS` BUCKET. That bucket's entire value is
+# that the principals who can edit the database cannot rewrite it; pointing bulk
+# export at it would hand the export path write access to the tamper-evidence
+# store. Two bindings, ideally two buckets with different retention rules.
+#
+# ABSENT IS SUPPORTED: an `r2` sink then reports a failed delivery every tick
+# and its cursor does not move, so nothing is lost — the rows are still there
+# when the binding arrives. An `http` sink is unaffected.
+#
+# `bucket_name` is a documented PLACEHOLDER; the deploy step substitutes the
+# account's real bucket.
+[[r2_buckets]]
+binding = "SIEM_EXPORTS"
+bucket_name = "replace-at-deploy-ferrogate-siem-exports"
+
+# ---------------------------------------------------------------------------
+# R2: the ASSET bucket — the operator FORCE-DELETE, and nothing else (#743)
+# ---------------------------------------------------------------------------
+#
+# The SAME bucket `apps/gateway/wrangler.toml` binds as `ASSETS`: it holds the
+# bytes of every hosted artifact. Unlike the two buckets above, this one is not
+# this Worker's own store — it belongs to the data plane, and this Worker is
+# borrowing exactly one capability from it.
+#
+# WHY THE ADMIN WORKER HOLDS IT AT ALL. `DELETE /admin/v1/assets/{asset_id}` is
+# the operator takedown of a bad artifact (#743's third "Done when" bullet). A
+# takedown that deletes the `stored_assets` row and leaves the objects would
+# stop the artifact being served, keep charging the platform for the bytes, and
+# report `deleted` — a takedown that took nothing down. The reclamation has to
+# happen here or the verb should not exist.
+#
+# WHAT KEEPS IT FROM BECOMING A READ PATH. `src/adapters.ts::resolveAssetObjects`
+# wraps this binding in `AssetObjectReclaimer`, an interface with ONE method
+# (`delete`). Nothing downstream of the composition root can call `get()` on it,
+# so the "metadata is not content" decision the whole read side is built on (the
+# inventory withholds `storage_uri` precisely so this surface never becomes an
+# exfiltration path) survives the new capability: this Worker can destroy an
+# object and still cannot fetch one.
+#
+# ABSENT IS A REFUSAL, NOT A DEGRADED MODE. With no binding the force-delete
+# answers `503 asset_bucket_not_configured` and writes nothing — no row deleted,
+# no decision recorded. Every other operation on this Worker is unaffected. It
+# must be bound to the SAME bucket the gateway writes, or the delete removes
+# metadata and orphans bytes in a bucket nobody is looking at.
+#
+# `bucket_name` is a documented PLACEHOLDER; the deploy step substitutes the
+# account's real bucket, which must match the gateway's.
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "replace-at-deploy-ferrogate-assets"
+
+# ---------------------------------------------------------------------------
+# ENTERPRISE IDENTITY (wave 18) — the deploy-time secrets, as PLACEHOLDERS
+# ---------------------------------------------------------------------------
+#
+# These are `wrangler secret put` values, NOT `[vars]`, and that asymmetry is
+# the point: a `[vars]` entry is committed plaintext in this file, and both of
+# the values below mint or unlock a credential.
+#
+#   ADMIN_CONSOLE_JWT_SECRET   — REQUIRED by `/v1/admin/*` (the console session
+#       surface) and by every SSO login, which ends in the same session. HS256
+#       signing key. ABSENT ⇒ every one of those routes answers
+#       `503 admin_console_unconfigured`; there is deliberately NO default,
+#       because a constant is forgeable by anyone who reads the source and a
+#       per-isolate random value silently invalidates every session on isolate
+#       eviction. Provision with:
+#           wrangler secret put ADMIN_CONSOLE_JWT_SECRET --name ferrogate-control-plane
+#
+#   <OIDC client secrets>      — NOT named here, by construction. A tenant's
+#       `sso_provider_configs.oidc_client_secret_ref` holds a REFERENCE
+#       (`env://NAME`), never the secret, so the control-plane row can never
+#       leak a live IdP credential. The operator provisions one
+#       `wrangler secret put <NAME>` per tenant IdP and writes `env://<NAME>`
+#       into the config. An unresolvable reference fails the login CLOSED.
+#
+# `docs/rewrite/CLOUD-VERIFICATION.md` §B carries the deploy checklist for both.
+# Neither is declared in `[vars]` on purpose — a secret in this file would be
+# committed to git, and `test/env-var-drift.test.ts` treats them as the
+# documented secret-binding exception rather than as drift.
+
+# TODO(bindings): the remaining bindings, configured per this app's inventory
+# before first deploy. Do NOT commit real resource IDs — placeholders only.
+#   [[d1_databases]]  binding = "TENANT_DB_<slug>" -> per-tenant database, the
+#       `database` binding selector the d1-proxy took per request
+#       (inventory-edge-control §7). One block per provisioned tenant; they are
+#       created by the provisioning flow, so they cannot be enumerated here.
+#   [[kv_namespaces]]       binding = "SESSIONS" -> console/refresh tokens
+#   [[secrets_store]]       admin JWT + provider creds (deploy-time binding)
+#   [[analytics_engine_datasets]] audit/evidence sink
+#   route groups: /admin/v1/* (canonical), /control/v1/* (alias), /v1/admin/* (auth service)
+
+# ---------------------------------------------------------------------------
+# WORKERS STATIC ASSETS: the admin console (#696)
+# ---------------------------------------------------------------------------
+#
+# The console is served from THIS Worker, on THIS origin, and that is a
+# correctness requirement rather than a packaging preference. Two guards on this
+# app make a cross-origin console unusable in a real browser:
+#
+#  1. `adminCrossSiteRejection` (src/middleware/auth.ts) refuses any
+#     state-changing request whose `sec-fetch-site` is `cross-site` or
+#     `same-site` with `403 cross_site_admin_denied`. A browser sets that header
+#     itself and a page cannot forge it, so a console on another origin gets 403
+#     on every POST/PUT/PATCH/DELETE — including `POST /v1/admin/login`, which is
+#     guarded by the same rule via `consoleCsrf` (src/session/routes.ts).
+#  2. the CORS preflight surface (src/middleware/cors.ts) answers
+#     `OPTIONS /admin/{*rest}` ONLY — the prefix is `/admin/` verbatim, as Rust
+#     wrote it. `POST /v1/admin/login` carries `content-type: application/json`,
+#     so a cross-origin browser preflights `OPTIONS /v1/admin/login`, which is
+#     documented for no operation and therefore 404s. The login never leaves the
+#     browser.
+#
+# Same origin removes both: `sec-fetch-site: same-origin` passes guard 1, and a
+# same-origin request is never preflighted at all, so guard 2 is not consulted.
+# Nothing is widened to achieve it.
+#
+# `directory` is the console's BUILD OUTPUT, copied there by
+# `scripts/build-admin-console.sh`; only `.gitignore`/`.assetsignore` are
+# committed, so a checkout that has never built the console serves no assets and
+# every API route still answers exactly as before.
+#
+# There is deliberately NO `binding`. An assets binding exists so the Worker can
+# pull an asset itself (`env.ASSETS.fetch(request)`), which is only needed with
+# `run_worker_first = true`; here the Worker runs first for the API paths and
+# never for an asset path, so it would be a binding nothing in `src/` reads —
+# precisely what `test/env-var-drift.test.ts`'s dead-binding assertion refuses,
+# and it refused this one while it was briefly declared. Adding it back requires
+# a reader. (Were one added it must NOT be called `ASSETS`: `apps/gateway` binds
+# that name to the R2 bucket of hosted tenant artifacts, and one name for two
+# resources across the fleet is how a copy-paste reaches the wrong one.)
+#
+# `not_found_handling = "single-page-application"` is what makes a deep link
+# such as `/app/request-logs` load the console shell instead of 404ing — the
+# console is a client-side router (react-router), so every route but `/` is a
+# path the asset server has no file for.
+#
+# `run_worker_first` IS THE LOAD-BEARING KEY, and the reason
+# `test/console-assets.test.ts` exists. Static assets are served BEFORE the
+# Worker by default, and with SPA not-found handling the fallback swallows every
+# unmatched path: without the list below, `GET /admin/v1/plans` would return the
+# console's `index.html` with `200 text/html` instead of reaching a handler, and
+# the entire API would look "up" while answering HTML to everything. The list
+# must therefore cover EVERY path this Worker routes; the test derives that set
+# from `app.routes` (Hono's own table on the exported instance) rather than from
+# a hand-written list, so mounting a new surface without listing it here is RED.
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+#
+# `/admin` is listed on its own beside `/admin/*` because `GET /admin` (the
+# overview probe) has no trailing segment, and a wildcard that happens to cover
+# its own prefix is not something worth betting the API surface on.
+run_worker_first = [
+  "/admin",
+  "/admin/*",
+  "/control/v1/*",
+  "/v1/admin/*",
+  "/scim/v2/*",
+  "/healthz",
+  "/readyz",
+  "/health",
+  "/version",
+  "/metrics",
+]
+
+# ---------------------------------------------------------------------------
+# The maintenance Cron (`src/schedule/scheduled.ts`, dispatched from the
+# `scheduled` handler on `src/worker.ts`'s default export). Agent schedules run
+# from TenantDataObject alarms and the queue consumer below.
+#
+# The minute cadence is retained for maintenance passes. It must not be used as
+# a fleet-wide schedule scan because that would create a second fire authority.
+# ---------------------------------------------------------------------------
+[triggers]
+crons = ["* * * * *"]
+
+# ---------------------------------------------------------------------------
+# Queue consumer — tenant Durable Object schedule alarms (#856)
+#
+# The queue is produced by the gateway's TenantDataObject alarm. This Worker
+# reads the wake-up envelope, addresses exactly one tenant object, and never
+# scans the fleet schedule collection from the Cron path.
+# ---------------------------------------------------------------------------
+[[queues.consumers]]
+queue = "replace-at-deploy-ferrogate-schedule-alarms"
+max_batch_size = 100
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "replace-at-deploy-ferrogate-schedule-alarms-dlq"
+# --- Workers Observability ---------------------------------------------------
+# Owner directive (2026-08-02): enable Workers Observability on the whole fleet
+# so production behaviour can be read back from the CLI (`wrangler tail`) and the
+# Workers Logs query API, instead of being inferred from responses.
+#
+# THREE INDEPENDENT SWITCHES, exactly as `apps/telemetry/wrangler.toml` documents:
+# `enabled` alone does NOT turn on tracing — the traces sub-table is its own
+# opt-in, and omitting it leaves this Worker's spans unrecorded.
+#
+# `invocation_logs` is ON here, unlike the telemetry ingest Worker: the automatic
+# one-per-request event is what makes a request greppable at all when debugging,
+# which is the whole point of the directive. It roughly DOUBLES billable log
+# events, so lower `head_sampling_rate` on a high-QPS deployment rather than
+# turning this back off — a sampled invocation log still lets you find a request,
+# a missing one does not.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+
+# ---------------------------------------------------------------------------
+# TENANT_DATA — the gateway's `TenantDataObject` namespace, bound CROSS-SCRIPT
+# (#820, docs/design/per-tenant-durable-object-storage-2026-08.md)
+#
+# One Durable Object per tenant IS that tenant's database. This Worker MINTS
+# tenants — `POST /admin/v1/tenant-accounts`, `POST /v1/admin/register` — so it
+# is the Worker that has to record them on the roster and put the first rows in
+# their object. `src/store/tenant_storage.ts` is the one place that happens.
+#
+# It MUST be the gateway's namespace and not one of this Worker's own. A DO
+# namespace is identified by (script, class); a locally-defined
+# `TenantDataObject` here would be a DIFFERENT namespace, so `idFromName(t)`
+# would name one object from this Worker and another from the gateway, and the
+# tenant's data would split in two with no error anywhere. `script_name` is what
+# makes them the same object.
+#
+# Consequences of `script_name`, all three of which apply here — the same three
+# `apps/mcp/wrangler.toml` states for its borrowed RATE_LIMIT binding:
+#
+#   * NO `exports` stanza belongs to this file. A lifecycle declaration belongs
+#     to the script that DEFINES the class — `apps/gateway`, whose
+#     `[exports.TenantDataObject]` SQLite declaration already exists. A second
+#     lifecycle declaration here would claim to define a
+#     class this script does not export and `wrangler deploy` rejects it. (If the
+#     class is ever MOVED into this app, the stanza must be an SQLite `exports`
+#     declaration, never a legacy key-value declaration; the storage backend of
+#     a live namespace can never be changed afterwards.)
+#   * NO `src/worker.ts` re-export either. This Worker BINDS the class; it does
+#     not define it.
+#   * DEPLOY ORDER: `ferrogate-gateway` FIRST. A `script_name` binding to a
+#     script that does not exist yet FAILS THE DEPLOY, which is the point.
+#
+# Removing this stanza is a supported posture rather than a break:
+# `resolveTenantDatabases` falls back to `EnvBindingTenantDatabaseRouter`, which
+# is the correct router for a single-tenant / self-hosted `native_binding`
+# deployment — where onboarding genuinely still requires a `wrangler deploy` to
+# add the tenant's own `[[d1_databases]]` stanza, so there is nothing this Worker
+# could provision on its own.
+# ---------------------------------------------------------------------------
+[[durable_objects.bindings]]
+name = "TENANT_DATA"
+class_name = "TenantDataObject"
+script_name = "ferrogate-gateway"
+
+[[durable_objects.bindings]]
+name = "CONTROL_DATA"
+class_name = "ControlDataObject"
+script_name = "ferrogate-gateway"

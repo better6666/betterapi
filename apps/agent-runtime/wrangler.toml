@@ -1,0 +1,323 @@
+name = "ferrogate-agent-runtime"
+main = "src/worker.ts"
+
+# `enable_ctx_exports` (#471) is REQUIRED for the governed-egress path:
+# `@cloudflare/containers` resolves the outbound interceptor through
+# `ctx.exports.ContainerProxy`. It is ENABLED here — by the compatibility DATE,
+# which is the only way to enable it at 2025-11-17.
+#
+# `enable_ctx_exports` and `compatibility_date = "2025-11-17"` are MUTUALLY
+# EXCLUSIVE, verified empirically rather than assumed: listing the flag makes
+# workerd refuse to boot, so the Worker is not merely misconfigured, it does not
+# start at all (and every test errors before collection):
+#
+#   service core:user:...: The compatibility flag enable_ctx_exports became the
+#   default as of 2025-11-17 so does not need to be specified anymore.
+#   MiniflareCoreError [ERR_RUNTIME_FAILURE]: The Workers runtime failed to start.
+#
+# So the date carries the flag's behaviour and the flag list must NOT repeat it.
+# If this date is ever LOWERED below 2025-11-17, `enable_ctx_exports` must be
+# added back to `compatibility_flags` in the same edit or container egress
+# breaks silently.
+compatibility_date = "2025-11-17"
+compatibility_flags = ["nodejs_compat"]
+
+# --- Durable Objects: run state + the worker plane --------------------------
+# Agent runs are long-lived and streaming, so run state is NOT request-scoped.
+#
+#   AgentRunState  — one instance per `${tenant_id}:${run_id}`. Holds the run
+#                    row, the append-only event timeline, the cancel latch, and
+#                    the live SSE subscriber set (event fan-out). Deriving the
+#                    instance name from the tenant makes cross-tenant run
+#                    addressing STRUCTURALLY impossible: another tenant's
+#                    `run_id` resolves to a different, empty instance and is
+#                    reported 404 (never 403 — the surface is not an existence
+#                    oracle; Rust `agent_jobs.rs` module docs).
+#
+#   WorkerPlane    — one instance per `${tenant_id}:${workspace_id}`. Holds the
+#                    self-hosted run dispatch queue and its lease bookkeeping
+#                    (`InMemorySelfHostedRunQueue` in
+#                    `crates/ferrogate-runtime/src/self_hosted_worker.rs`), which
+#                    MUST survive the request that enqueued it.
+#
+# These are real bindings, not placeholders: without them the run lifecycle has
+# nowhere durable to live. They need no account resources and run offline under
+# `@cloudflare/vitest-pool-workers`.
+[[durable_objects.bindings]]
+name = "AGENT_RUN_STATE"
+class_name = "AgentRunState"
+
+[[durable_objects.bindings]]
+name = "WORKER_PLANE"
+class_name = "WorkerPlane"
+
+# AgentRunState writes authoritative request/run evidence through this
+# cross-script TenantDataObject. It is deliberately not a fallback to CONTROL_DB.
+[[durable_objects.bindings]]
+name = "TENANT_DATA"
+class_name = "TenantDataObject"
+script_name = "ferrogate-gateway"
+
+# Zero-D1 S5 (#881): the singleton CONTROL object, bound cross-script from the
+# gateway script. The backfill/cut-over is done — AGENT_RUNTIME_CONTROL_STORAGE
+# is `durable_object` and CONTROL_DATA is the only control-plane source.
+[[durable_objects.bindings]]
+name = "CONTROL_DATA"
+class_name = "ControlDataObject"
+script_name = "ferrogate-gateway"
+
+# DO storage is the per-instance embedded SQLite backend (`new_sqlite_classes`,
+# NOT `new_classes`) — same requirement the Agents SDK has.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AgentRunState", "WorkerPlane"]
+
+[vars]
+AGENT_RUNTIME_CONTROL_STORAGE = "durable_object"
+# DEV / TEST ONLY. Installs the in-memory port bundle from `src/ports.ts`.
+# Production MUST NOT set this: without it the Worker fails CLOSED — every
+# authenticated surface answers 503 until real ports are bound.
+FG_DEV_IN_MEMORY_PORTS = "1"
+
+# Transport posture for the 6 internal `/v1/self-hosted-workers/*` callbacks
+# (Rust `SelfHostedTransportPosture`). "1" selects `RequireProductionMtls`,
+# which rejects the `symmetric_aead` and unverified `mutual_tls` marker
+# downgrade paths. Workers cannot terminate mutual TLS in-process, so enabling
+# it here fails closed for every channel this Worker can currently observe —
+# that is the honest boundary, exactly as in Rust.
+FG_REQUIRE_PRODUCTION_MTLS = "0"
+
+# Governed egress allowlist for the isolation tier (#471). Comma-separated bare
+# hostnames. EMPTY MEANS SEALED: with no authorized host every sandbox starts
+# with NO egress and any egress request is refused 422. A forgotten
+# configuration must fail closed.
+CONTAINER_GOVERNED_EGRESS_HOSTS = ""
+
+# Operator knobs mirroring the Rust constants of the same name. Anything unset
+# or unparseable falls back to the Rust default rather than to zero, so a typo
+# cannot silently remove the concurrency bound.
+#   AGENT_RUNTIME_ENABLED         "0" ⇒ every run/job verb answers 403.
+#   AGENT_JOB_MAX_OPEN_PER_TENANT open jobs one tenant may hold at once (429).
+#   AGENT_JOB_DISPATCH_TTL_SECS   age at which a never-leased start dispatch is
+#                                 swept, so a tenant with NO registered worker
+#                                 self-heals instead of locking itself out.
+AGENT_RUNTIME_ENABLED = "1"
+AGENT_JOB_MAX_OPEN_PER_TENANT = "200"
+AGENT_JOB_DISPATCH_TTL_SECS = "86400"
+
+# The OPERATOR workflow table (Rust `[[agent_workflows]]`), read by the
+# tool-side graph gate in `src/runs/workflow.ts` — the ladder that enforces
+# node-kind, tool-pinning, edge transitions and parallelism on a run that
+# DECLARES a workflow through the `x-ferrogate-workflow-id` header.
+#
+# Materialised OVER the `control_plane_resources` documents of kind
+# `agent-workflows` in `CONTROL_DB`, so an operator can state the table here
+# and the admin surface can add to it, with this var winning on a collision.
+#
+# Empty is fail-closed for a caller that DECLARES a workflow
+# (`400 workflow_not_found`) and invisible to one that does not — the gate is
+# opt-in by the header, so `"[]"` is not an "allow everything" posture.
+#
+# UNLIKE `AGENT_UPSTREAMS`, committing this empty is safe: there is
+# deliberately no `FG_DEV_AGENT_WORKFLOWS` twin, so there is no `??` chain a
+# committed value could shadow, and `test/workflow-tool-gate.test.ts` seeds the
+# var through `setEnvVar` at runtime (overriding whatever the toml bound) and
+# restores it in `afterAll`. Absent and `"[]"` are the same table.
+AGENT_WORKFLOWS = "[]"
+
+# DEV / TEST ONLY. JSON `{ keywords?, regex?, secretPatterns? }` configuring the
+# A2A request/response guardrail (#278), evaluated by the real
+# `@ferrogate/guardrails` deterministic detector. ABSENT OR EMPTY means NO
+# detector is configured, which matches nothing and allows everything — the
+# same answer Rust's `match_guardrail` gives when no guardrail is set up. This
+# is deliberately NOT the enforcement policy store: real detector policy is
+# tenant-scoped and lives in the control plane, so a `[vars]` entry could only
+# ever be a per-deployment default.
+FG_DEV_A2A_GUARDRAILS = ""
+
+# ---------------------------------------------------------------------------
+# AGENT_UPSTREAMS — the operator catalog of A2A upstreams, read by `resolveDeps`
+# (`src/ports.ts`). JSON array of `AgentUpstream`.
+#
+# DELIBERATELY NOT DECLARED, which is NOT the same as "forgotten". `resolveDeps`
+# reads `env.AGENT_UPSTREAMS ?? (dev ? env.FG_DEV_AGENT_UPSTREAMS : undefined)`
+# and `parseJsonVar` defaults to `[]`, so ABSENT and `"[]"` give a deployment
+# the identical empty catalog — every dispatch 404s, the correct unconfigured
+# posture. Declaring the empty string buys nothing and costs something real:
+# `??` makes a committed `AGENT_UPSTREAMS = "[]"` SHADOW the dev fallback, and
+# because `vitest.config.ts` loads this file through `wrangler: { configPath }`,
+# the committed var would silently empty the catalog the test harness seeds —
+# 14 A2A dispatch tests turn red against correct code (verified, not assumed).
+#
+# An operator states the catalog by SETTING this var; leaving it out is how the
+# repo says "no upstreams", in the one way that cannot leak into the harness.
+#   AGENT_UPSTREAMS = '[{"id":"helper","enabled":true,"url":"https://…/a2a"}]'
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Zero-D1 #821 PR2-delete: the tenant `[[d1_databases]] DB` stanza is DELETED
+#
+# The shared `ferrogate-tenant` D1 (the `DB` binding) used to sit here. It is
+# gone. Every tenant-schema table (`sql/d1-ts/tenant/`) — `api_keys`, wallets +
+# `wallet_reservations`, `usage_monthly_rollups`, `projects`/`workspaces`
+# lifecycle rows — now lives ONLY in that tenant's own SQLite-backed Durable
+# Object (`env.TENANT_DATA.idFromName(tenantId)`, `@ferrogate/storage`'s
+# `TenantDataObject`). `resolveDeps` (src/ports.ts) routes ALL of them through
+# the `DurableObjectTenantDatabaseRouter`: the two-hop credential leg
+# (`twoHopApiKeyPort`), the admission money legs (`routedSpendSource` /
+# `routedWalletAdmission`) and the lifecycle project/workspace tiers
+# (`lifecycleRowSourceFor`). Nothing in `src/` reads `env.DB` any more — the
+# `"off"`/no-`TENANT_DATA` fallback arms that were its only readers are deleted.
+#
+# DEPLOY GATE (IRREVERSIBLE): before deploying, the control roster must show a
+# 100% tenant cutover — zero tenants with `migration_state ∈ {shared, copying,
+# verifying}` and every tenant `storage_backend = 'durable_object'`; otherwise a
+# not-yet-cut-over tenant's data is dropped when the shared D1 goes away.
+#
+# Zero-D1 S5 (#881) already deleted the CONTROL_DB stanza
+# (`database_name = "ferrogate-control"`): worker-identity control reads resolve
+# through the `CONTROL_DATA` DO facade. This Worker now declares NO
+# `[[d1_databases]]` stanza at all — see `d1_databases = []` under `[env.unit]`.
+# ---------------------------------------------------------------------------
+
+# ===========================================================================
+# DURABLE OBJECTS — the SHARED admission counter (wave 16 finding D1; #666)
+#
+# LIVE. It was committed COMMENTED OUT from wave 16 until issue #666, with
+# "UNCOMMENT AT DEPLOY TIME" written above it — which made the COMMITTED tree
+# the broken configuration. A credential capped at 60 rpm was charged 60 here,
+# 60 more on `apps/gateway` and 60 more per `apps/mcp` isolate, and a deploy
+# that forgot the two lines said nothing. See the harness note below the stanza
+# for why it can now be live.
+#
+# Read as `env.RATE_LIMIT` by `src/admission/counter.ts::counterFromEnv`. NOT a
+# class this script defines: `script_name` names `apps/gateway`'s deployed
+# `RateLimiterDurableObject`, so `idFromName("key:<id>")` here addresses the
+# SAME instance the gateway addresses. That sharing IS the fix — a credential
+# at 60 rpm is charged ONE window across `/v1/chat/completions` and
+# `/v1/agent-jobs`. A `RateLimiterDurableObject` defined HERE would compile,
+# deploy and pass every test while creating a SECOND, independent namespace,
+# handing this Worker its own full RPM quota: a quieter version of the very
+# bypass wave 16 closed.
+#
+# NO lifecycle declaration belongs to it. The class is introduced by
+# `apps/gateway/wrangler.toml`'s `[exports.RateLimiterDurableObject]` entry.
+# Claiming to define a class this script does
+# not export is rejected at deploy. Same reason there is no `src/worker.ts`
+# re-export line. DEPLOY `ferrogate-gateway` FIRST — a `script_name` binding to
+# a script that does not exist yet FAILS THE DEPLOY, which is the point: that
+# refusal is the deploy-time assertion the old comment could never be.
+# ===========================================================================
+[[durable_objects.bindings]]
+name = "RATE_LIMIT"
+class_name = "RateLimiterDurableObject"
+script_name = "ferrogate-gateway"
+
+# ---------------------------------------------------------------------------
+# HOW THE OFFLINE HARNESS RESOLVES THE LINE ABOVE
+#
+# The measured reason this stanza was commented (2026-08-01) was real: a bare
+# `@cloudflare/vitest-pool-workers` session refuses to start with
+#
+#   binding "RATE_LIMIT" refers to a service "core:user:ferrogate-gateway",
+#   but no such service is defined.
+#
+# The reading that was WRONG is "workerd cannot resolve a cross-script binding
+# offline". It cannot resolve it against a script that is not in the SESSION —
+# `vitest.config.ts` now puts one there, an auxiliary worker named
+# `ferrogate-gateway` carrying the gateway's real `RateLimiterDurableObject`
+# (`apps/gateway/test/support/rate-limit-aux-worker.ts`). So the binding is
+# live, the suite is green, and `test/shared-rate-limit.test.ts` charges a
+# window as the gateway and requires THIS Worker to find it spent.
+#
+# `wrangler dev --local` on this app alone boots too (wrangler >=4.114 reports
+# the binding as `[not connected]` rather than refusing), so `e2e/` and the
+# boot proof are unaffected. To exercise the counter locally, put the gateway
+# in the same dev session:
+#
+#   bunx wrangler dev --local -c wrangler.toml -c ../gateway/wrangler.toml
+# ---------------------------------------------------------------------------
+
+# TODO(bindings): configure per this app's inventory before first deploy.
+# Do NOT commit real resource IDs — these are placeholders only.
+#   [[durable_objects.bindings]]  name = "CONTAINER_SANDBOX", class_name = "AgentSandbox"
+#   [[migrations]]                tag = "v2", new_sqlite_classes = ["AgentSandbox"]
+#   [[containers]]                name/class_name/image for AgentSandbox
+#                                 (`enableInternet = false`, `interceptHttps = true`
+#                                 pinned — load-bearing #471 egress control).
+#                                 Requires a PAID account, so it is not wired
+#                                 into the offline test harness; see
+#                                 `src/runs/governance.ts` PORT-TODOs.
+#   [[r2_buckets]]                binding = "ARTIFACTS" -> worker-reported artifacts
+#   [[queues]]                    billing/metering fan-out for agent runs
+#   [[analytics_engine_datasets]] run-timeline telemetry sink (apps/telemetry)
+#   secrets                       FG_SELF_HOSTED_WORKER_REGISTRY (Secrets Store,
+#                                 deploy-time binding) -> the worker identity table
+# --- Workers Observability ---------------------------------------------------
+# Owner directive (2026-08-02): enable Workers Observability on the whole fleet
+# so production behaviour can be read back from the CLI (`wrangler tail`) and the
+# Workers Logs query API, instead of being inferred from responses.
+#
+# THREE INDEPENDENT SWITCHES, exactly as `apps/telemetry/wrangler.toml` documents:
+# `enabled` alone does NOT turn on tracing — the traces sub-table is its own
+# opt-in, and omitting it leaves this Worker's spans unrecorded.
+#
+# `invocation_logs` is ON here, unlike the telemetry ingest Worker: the automatic
+# one-per-request event is what makes a request greppable at all when debugging,
+# which is the whole point of the directive. It roughly DOUBLES billable log
+# events, so lower `head_sampling_rate` on a high-QPS deployment rather than
+# turning this back off — a sampled invocation log still lets you find a request,
+# a missing one does not.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+
+# ==========================================================================
+# UNIT TEST ENVIRONMENT
+#
+# D1 bindings are intentionally absent here. D1 is non-inheritable in named
+# Wrangler environments, so selecting this environment keeps the default
+# suite on its explicit in-memory fixtures instead of an empty unmigrated D1.
+# The durable harness has its own config because it must bind and migrate both
+# live schemas. This block mirrors the local DO bindings that the unit suite
+# needs while leaving the root deployment authorities above intact.
+# ===========================================================================
+[env.unit]
+main = "src/worker.ts"
+d1_databases = []
+
+[[env.unit.durable_objects.bindings]]
+name = "AGENT_RUN_STATE"
+class_name = "AgentRunState"
+
+[[env.unit.durable_objects.bindings]]
+name = "WORKER_PLANE"
+class_name = "WorkerPlane"
+
+[[env.unit.durable_objects.bindings]]
+name = "TENANT_DATA"
+class_name = "TenantDataObject"
+script_name = "ferrogate-gateway"
+
+[[env.unit.durable_objects.bindings]]
+name = "RATE_LIMIT"
+class_name = "RateLimiterDurableObject"
+script_name = "ferrogate-gateway"
+
+[env.unit.vars]
+AGENT_RUNTIME_CONTROL_STORAGE = "durable_object"
+FG_DEV_IN_MEMORY_PORTS = "1"
+FG_REQUIRE_PRODUCTION_MTLS = "0"
+CONTAINER_GOVERNED_EGRESS_HOSTS = ""
+AGENT_RUNTIME_ENABLED = "1"
+AGENT_JOB_MAX_OPEN_PER_TENANT = "200"
+AGENT_JOB_DISPATCH_TTL_SECS = "86400"
+AGENT_WORKFLOWS = "[]"
+FG_DEV_A2A_GUARDRAILS = ""

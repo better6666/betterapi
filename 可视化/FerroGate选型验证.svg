@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#17202a" flood-opacity="0.12"/></filter>
+  </defs>
+  <rect width="1600" height="900" fill="#f4f6f8"/>
+  <rect x="0" y="0" width="1600" height="150" fill="#17202a"/>
+  <text x="80" y="68" fill="#ffffff" font-family="Arial, PingFang SC, sans-serif" font-size="41" font-weight="700">FerroGate 选型与版本验证</text>
+  <text x="80" y="113" fill="#b8c4ce" font-family="Arial, PingFang SC, sans-serif" font-size="22">固定基线 v2026.08.11 · commit 2ec781ae · 2026-08-11</text>
+
+  <g font-family="Arial, PingFang SC, sans-serif" filter="url(#shadow)">
+    <rect x="80" y="210" width="340" height="190" rx="8" fill="#ffffff"/>
+    <rect x="80" y="210" width="340" height="12" fill="#23a36d"/>
+    <text x="250" y="285" text-anchor="middle" fill="#17202a" font-size="48" font-weight="700">669 / 669</text>
+    <text x="250" y="330" text-anchor="middle" fill="#52606d" font-size="22">管理前端测试通过</text>
+    <text x="250" y="365" text-anchor="middle" fill="#7b8994" font-size="17">93 个测试文件</text>
+
+    <rect x="460" y="210" width="340" height="190" rx="8" fill="#ffffff"/>
+    <rect x="460" y="210" width="340" height="12" fill="#2d73b9"/>
+    <text x="630" y="285" text-anchor="middle" fill="#17202a" font-size="42" font-weight="700">PASS</text>
+    <text x="630" y="330" text-anchor="middle" fill="#52606d" font-size="22">TypeScript 类型检查</text>
+    <text x="630" y="365" text-anchor="middle" fill="#7b8994" font-size="17">tsc -b 无错误</text>
+
+    <rect x="840" y="210" width="340" height="190" rx="8" fill="#ffffff"/>
+    <rect x="840" y="210" width="340" height="12" fill="#f48120"/>
+    <text x="1010" y="285" text-anchor="middle" fill="#17202a" font-size="42" font-weight="700">PASS</text>
+    <text x="1010" y="330" text-anchor="middle" fill="#52606d" font-size="22">Vite 生产构建</text>
+    <text x="1010" y="365" text-anchor="middle" fill="#7b8994" font-size="17">Bundle budget 检查通过</text>
+
+    <rect x="1220" y="210" width="300" height="190" rx="8" fill="#ffffff"/>
+    <rect x="1220" y="210" width="300" height="12" fill="#7e57c2"/>
+    <text x="1370" y="285" text-anchor="middle" fill="#17202a" font-size="48" font-weight="700">1,741</text>
+    <text x="1370" y="330" text-anchor="middle" fill="#52606d" font-size="22">基线累计提交</text>
+    <text x="1370" y="365" text-anchor="middle" fill="#7b8994" font-size="17">完整历史核验</text>
+  </g>
+
+  <text x="80" y="480" fill="#17202a" font-family="Arial, PingFang SC, sans-serif" font-size="27" font-weight="700">选择理由</text>
+  <g font-family="Arial, PingFang SC, sans-serif">
+    <circle cx="110" cy="545" r="22" fill="#23a36d"/><text x="110" y="553" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="700">1</text>
+    <text x="155" y="553" fill="#273746" font-size="22" font-weight="700">Cloudflare 原生</text><text x="350" y="553" fill="#667581" font-size="20">Workers、D1、R2、KV、Durable Objects、Queues、Analytics Engine</text>
+    <circle cx="110" cy="615" r="22" fill="#2d73b9"/><text x="110" y="623" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="700">2</text>
+    <text x="155" y="623" fill="#273746" font-size="22" font-weight="700">账务闭环</text><text x="300" y="623" fill="#667581" font-size="20">虚拟 Key、配额、钱包预扣、幂等计量、异步账务出站</text>
+    <circle cx="110" cy="685" r="22" fill="#f48120"/><text x="110" y="693" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="700">3</text>
+    <text x="155" y="693" fill="#273746" font-size="22" font-weight="700">工程质量</text><text x="300" y="693" fill="#667581" font-size="20">OpenAPI 契约、单元测试、端到端测试、类型检查、前端包体预算</text>
+    <circle cx="110" cy="755" r="22" fill="#7e57c2"/><text x="110" y="763" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="700">4</text>
+    <text x="155" y="763" fill="#273746" font-size="22" font-weight="700">许可清晰</text><text x="300" y="763" fill="#667581" font-size="20">Apache-2.0，适合合法合规地修改、部署和再分发</text>
+  </g>
+
+  <rect x="1050" y="490" width="470" height="280" rx="8" fill="#fff7ea" stroke="#e7a04d" stroke-width="2"/>
+  <text x="1090" y="545" fill="#8c5318" font-family="Arial, PingFang SC, sans-serif" font-size="24" font-weight="700">版本选择说明</text>
+  <text x="1090" y="595" fill="#5d6268" font-family="Arial, PingFang SC, sans-serif" font-size="19">最新主分支与 v2026.08.13 存在 2 项前端契约测试失败。</text>
+  <text x="1090" y="635" fill="#5d6268" font-family="Arial, PingFang SC, sans-serif" font-size="19">v2026.08.11 是本次实测中最新的全绿发布基线。</text>
+  <text x="1090" y="690" fill="#5d6268" font-family="Arial, PingFang SC, sans-serif" font-size="19">后续升级应先合并上游修复，再运行完整测试。</text>
+  <text x="1090" y="735" fill="#8c5318" font-family="Arial, PingFang SC, sans-serif" font-size="17">注意：未连接真实 Cloudflare 账号或模型供应商。</text>
+
+  <text x="80" y="850" fill="#71808c" font-family="Arial, PingFang SC, sans-serif" font-size="17">本图记录本地静态核验与管理前端测试结果；不代表生产环境容量、延迟或费用承诺。</text>
+</svg>

@@ -1,0 +1,165 @@
+<!--
+  Token4AI Cloud Attribution
+  Developed by the commercial cloud service company represented by https://token4ai.cloud.
+  Author: jamesduan (X: https://x.com/JamesDuanL)
+  Created: 2026-06-11
+  description: Token4AI Cloud, FerroGate AI Gateway, Rust API Gateway, agent-native AI traffic infrastructure.
+-->
+
+---
+title: Analytics Warehouse
+description: Vector and ClickHouse analytics delivery guidance for FerroGate observability data.
+permalink: /analytics-warehouse/
+---
+
+# Analytics Warehouse
+
+FerroGate keeps the operator-facing evidence chain in Supabase and sends
+high-volume analytics copies through the analytics delivery boundary.
+
+Use the analytics warehouse path for:
+
+- high-volume request log copies for scans and dashboards;
+- trace/span-like request attempt records;
+- usage metric copies and long-window token analytics;
+- billing/metering analytics that do not update gateway rollups;
+- dashboard aggregates and charts.
+
+Use durable control-plane storage for API keys, policies, gateway config
+profiles, prompt templates, tool approval records, Admin API request logs,
+audit events, agent-run timelines, metering events, and usage rollups. See
+[`docs/durable-storage.md`](durable-storage.md).
+
+## Storage Decision Matrix
+
+| Scenario | Better fit |
+| --- | --- |
+| API key / policy / config point lookup | Supabase control-plane storage |
+| Control-plane CRUD | Supabase control-plane storage |
+| Billing, request, audit, usage, and agent-run evidence needed by Admin API | Supabase control-plane storage |
+| Recent local-only request list for compatibility tests | In-memory or local file-backed compatibility storage |
+| Massive request-log scans and dashboard copies | ClickHouse |
+| Traces / spans queries | ClickHouse |
+| Usage metrics aggregation outside gateway billing rollups | ClickHouse |
+| High-volume billing / metering analytics copies | ClickHouse |
+| Dashboard chart statistics | ClickHouse |
+
+## Supabase Versus ClickHouse Boundary
+
+Supabase owns the synchronous evidence that must survive restart and be
+queryable through Admin API endpoints. FerroGate writes that evidence on the
+request/control-plane path with bounded rows: one request log per request, one
+audit event per decision, one idempotent metering event per metered request, and
+incremental usage rollups.
+
+ClickHouse owns analytical copies. Vector and direct ClickHouse exporters read
+the in-process evidence stream and send flat events downstream for wide scans,
+large retention windows, dashboard aggregation, and transformed observability.
+Those exports do not feed back into Supabase Admin API tables and must not be
+used to settle gateway usage rollups.
+
+If an export is slow or unavailable, analytics status records the failure while
+the Supabase evidence path remains the system of record. If Supabase is marked
+`storage.required: true` and the synchronous evidence write fails during a
+request path where billing/control-plane correctness depends on it, FerroGate
+fails closed instead of silently replacing durable evidence with warehouse-only
+exports.
+
+## Pipeline Mode: FerroGate To Vector To ClickHouse
+
+Pipeline mode is the default analytics provider shape because Vector can fan
+out, transform, filter, sample, and route events to many downstream sinks.
+
+```toml
+[analytics]
+enabled = true
+provider = "vector"
+required = true
+vector_endpoint = "http://127.0.0.1:4319"
+export_timeout_secs = 3
+batch_max_events = 500
+flush_interval_millis = 1000
+queue_capacity = 10000
+```
+
+FerroGate sends flat NDJSON analytics events to Vector. The checked-in
+`ferrogate-test` Docker scenario configures Vector to deliver those events to
+ClickHouse tables created from
+[`sql/clickhouse/001_init_analytics.sql`](../sql/clickhouse/001_init_analytics.sql).
+
+Run the Docker-backed pipeline scenario:
+
+```bash
+cargo build -p ferrogate-cli -p ferrogate-test --locked
+./target/debug/ferrogate-test run analytics-vector-clickhouse
+```
+
+The scenario starts ClickHouse and Vector containers, sends a real AI request
+through FerroGate, waits for warehouse rows, then verifies Admin API analytics
+status reports a successful export.
+
+## Direct Warehouse Mode: FerroGate To ClickHouse
+
+Direct mode removes Vector and writes analytics batches straight to ClickHouse:
+
+```toml
+[analytics]
+enabled = true
+provider = "clickhouse"
+required = true
+clickhouse_url = "http://127.0.0.1:8123"
+export_timeout_secs = 3
+batch_max_events = 500
+flush_interval_millis = 1000
+queue_capacity = 10000
+```
+
+Use `clickhouse_url_env` instead of `clickhouse_url` when the URL contains
+credentials.
+
+Run the direct ClickHouse scenario:
+
+```bash
+cargo build -p ferrogate-cli -p ferrogate-test --locked
+./target/debug/ferrogate-test run analytics-direct-clickhouse
+```
+
+This starts a ClickHouse container, initializes the analytics schema, sends a
+real AI request through FerroGate, verifies warehouse rows, and checks Admin API
+analytics evidence.
+
+## Runtime Evidence
+
+`GET /admin/v1/status` reports the analytics backend evidence:
+
+- provider: `vector`, `clickhouse`, or `none`;
+- mode: `pipeline`, `direct_warehouse`, or `disabled`;
+- active/required flags;
+- health;
+- last successful export time;
+- last export error.
+
+Export failures update analytics status. They do not make the analytics
+warehouse the control-plane system of record, and they do not turn
+Turso/libSQL compatibility storage into a production warehouse. Supabase keeps
+the normalized Admin API evidence tables; ClickHouse remains the high-volume
+analytics target.
+
+## Local Verification Commands
+
+Run deterministic local API coverage plus Supabase/PostgreSQL durability
+tests:
+
+```bash
+./target/debug/ferrogate-test ci
+```
+
+Run the warehouse E2E scenarios when Docker is available:
+
+```bash
+./target/debug/ferrogate-test run analytics-direct-clickhouse
+./target/debug/ferrogate-test run analytics-vector-clickhouse
+```
+
+The Docker scenarios are intentionally not part of the default local CI command
+because they start fixed-name containers and require Docker networking.

@@ -1,0 +1,4212 @@
+{
+  "version": 1,
+  "description": "Authoritative fixed-route and operation contract consumed by FerroGate runtime dispatch and OpenAPI validation.",
+  "route_patterns": [
+    {
+      "pattern": "/healthz",
+      "group": "health"
+    },
+    {
+      "pattern": "/readyz",
+      "group": "readiness"
+    },
+    {
+      "pattern": "/admin",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/admin/",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/admin/dashboard",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/admin/status",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/admin/v1/status",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/admin/v1/overview",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/admin/v1/observability",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/metrics",
+      "group": "admin_overview"
+    },
+    {
+      "pattern": "/v1/models",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/models/{model}",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/chat/completions",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/responses",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/responses/{response_id}",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/embeddings",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/messages",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/messages/count_tokens",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/images/generations",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/rerank",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/audio/transcriptions",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/audio/translations",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/audio/speech",
+      "group": "inference"
+    },
+    {
+      "pattern": "/v1/tools",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/tools/execute",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/mcp/tool/execute",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/functions/execute",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/mcp",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/mcp/identity/callback",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/mcp/identity/{server}",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/mcp/identity/{server}/authorize",
+      "group": "tool"
+    },
+    {
+      "pattern": "/v1/agent-runs",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/v1/agent-jobs",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/v1/agent-jobs/{*rest}",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/.well-known/agent.json",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/v1/agents/{*rest}",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/admin/v1/agent-runs",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/admin/v1/agent-runs/{*rest}",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/admin/v1/self-hosted-runs/{*rest}",
+      "group": "agent_run"
+    },
+    {
+      "pattern": "/v1/self-hosted-workers/heartbeat",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/v1/self-hosted-workers/events",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/v1/self-hosted-workers/artifacts",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/v1/self-hosted-workers/checkpoints",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/v1/self-hosted-workers/runs/poll",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/v1/self-hosted-workers/runs/ack",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/admin/v1/self-hosted-workers",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/admin/v1/self-hosted-workers/{*rest}",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/admin/v1/self-hosted-worker-records",
+      "group": "self_hosted_worker"
+    },
+    {
+      "pattern": "/v1/skills",
+      "group": "skill"
+    },
+    {
+      "pattern": "/v1/skills/{*rest}",
+      "group": "skill"
+    },
+    {
+      "pattern": "/admin/v1/skill-packages",
+      "group": "skill"
+    },
+    {
+      "pattern": "/admin/v1/skill-packages/{*rest}",
+      "group": "skill"
+    },
+    {
+      "pattern": "/v1/prompts/{*rest}",
+      "group": "prompt"
+    },
+    {
+      "pattern": "/admin/v1/prompt-templates",
+      "group": "prompt"
+    },
+    {
+      "pattern": "/admin/v1/prompt-templates/{*rest}",
+      "group": "prompt"
+    },
+    {
+      "pattern": "/admin/v1/request-logs",
+      "group": "admin_request_log"
+    },
+    {
+      "pattern": "/admin/v1/request-log-exports",
+      "group": "admin_request_log"
+    },
+    {
+      "pattern": "/admin/v1/audit-events",
+      "group": "admin_request_log"
+    },
+    {
+      "pattern": "/admin/v1/cost-records",
+      "group": "admin_cost_record"
+    },
+    {
+      "pattern": "/admin/v1/cost-record-exports",
+      "group": "admin_cost_record"
+    },
+    {
+      "pattern": "/admin/v1/experiments",
+      "group": "admin_experiment"
+    },
+    {
+      "pattern": "/admin/v1/experiments/{*rest}",
+      "group": "admin_experiment"
+    },
+    {
+      "pattern": "/admin/v1/config/validate",
+      "group": "admin_config_ops"
+    },
+    {
+      "pattern": "/admin/v1/config/reload",
+      "group": "admin_config_ops"
+    },
+    {
+      "pattern": "/admin/v1/config/import-model-catalog",
+      "group": "admin_config_ops"
+    },
+    {
+      "pattern": "/admin/v1/drain",
+      "group": "admin_config_ops"
+    },
+    {
+      "pattern": "/admin/v1/provider-credentials",
+      "group": "admin_provider_credential"
+    },
+    {
+      "pattern": "/admin/v1/provider-credentials/{*rest}",
+      "group": "admin_provider_credential"
+    },
+    {
+      "pattern": "/admin/v1/providers",
+      "group": "admin_provider"
+    },
+    {
+      "pattern": "/admin/v1/providers/{id}",
+      "group": "admin_provider"
+    },
+    {
+      "pattern": "/admin/v1/providers/{id}/sync-models",
+      "group": "admin_provider"
+    },
+    {
+      "pattern": "/admin/v1/provider-health",
+      "group": "admin_provider"
+    },
+    {
+      "pattern": "/admin/v1/provider-models",
+      "group": "admin_provider"
+    },
+    {
+      "pattern": "/admin/v1/managed-workers",
+      "group": "admin_managed_worker"
+    },
+    {
+      "pattern": "/admin/v1/managed-worker-sessions",
+      "group": "admin_managed_worker"
+    },
+    {
+      "pattern": "/admin/v1/framework-adapters",
+      "group": "admin_managed_worker"
+    },
+    {
+      "pattern": "/admin/v1/observed-agent-activity",
+      "group": "admin_managed_worker"
+    },
+    {
+      "pattern": "/admin/v1/agent-cost-burn",
+      "group": "admin_agent_cost_burn"
+    },
+    {
+      "pattern": "/admin/v1/spend-anomalies",
+      "group": "admin_spend_anomaly"
+    },
+    {
+      "pattern": "/admin/v1/agent-upstreams",
+      "group": "admin_agent_upstream"
+    },
+    {
+      "pattern": "/admin/v1/agent-upstreams/{*rest}",
+      "group": "admin_agent_upstream"
+    },
+    {
+      "pattern": "/admin/v1/extensions",
+      "group": "admin_plugin"
+    },
+    {
+      "pattern": "/admin/v1/plugins",
+      "group": "admin_plugin"
+    },
+    {
+      "pattern": "/admin/v1/plugins/{*rest}",
+      "group": "admin_plugin"
+    },
+    {
+      "pattern": "/admin/v1/tools",
+      "group": "admin_tool"
+    },
+    {
+      "pattern": "/admin/v1/tool-approvals",
+      "group": "admin_tool"
+    },
+    {
+      "pattern": "/admin/v1/tool-approvals/{*rest}",
+      "group": "admin_tool"
+    },
+    {
+      "pattern": "/admin/v1/tool-sessions/{*rest}",
+      "group": "admin_tool"
+    },
+    {
+      "pattern": "/admin/v1/mcp-servers",
+      "group": "admin_mcp_server"
+    },
+    {
+      "pattern": "/admin/v1/mcp-servers/{*rest}",
+      "group": "admin_mcp_server"
+    },
+    {
+      "pattern": "/admin/v1/models",
+      "group": "admin_model"
+    },
+    {
+      "pattern": "/admin/v1/models/{id}",
+      "group": "admin_model"
+    },
+    {
+      "pattern": "/admin/v1/models/{model_id}/offerings",
+      "group": "admin_model"
+    },
+    {
+      "pattern": "/admin/v1/models/{model_id}/offerings/{offering_id}",
+      "group": "admin_model"
+    },
+    {
+      "pattern": "/admin/v1/gateway-configs",
+      "group": "admin_gateway_config"
+    },
+    {
+      "pattern": "/admin/v1/gateway-configs/{*rest}",
+      "group": "admin_gateway_config"
+    },
+    {
+      "pattern": "/admin/v1/agent-workflows",
+      "group": "admin_agent_workflow"
+    },
+    {
+      "pattern": "/admin/v1/agent-workflows/{*rest}",
+      "group": "admin_agent_workflow"
+    },
+    {
+      "pattern": "/admin/v1/agent-schedules",
+      "group": "admin_agent_schedule"
+    },
+    {
+      "pattern": "/admin/v1/agent-schedules/{*rest}",
+      "group": "admin_agent_schedule"
+    },
+    {
+      "pattern": "/admin/v1/api-keys",
+      "group": "admin_api_key"
+    },
+    {
+      "pattern": "/admin/v1/api-keys/{*rest}",
+      "group": "admin_api_key"
+    },
+    {
+      "pattern": "/admin/v1/policies",
+      "group": "admin_policy"
+    },
+    {
+      "pattern": "/admin/v1/policies/{*rest}",
+      "group": "admin_policy"
+    },
+    {
+      "pattern": "/admin/v1/guardrail-policies",
+      "group": "guardrail_policy"
+    },
+    {
+      "pattern": "/admin/v1/guardrail-policies/{*rest}",
+      "group": "guardrail_policy"
+    },
+    {
+      "pattern": "/admin/v1/tenant-accounts",
+      "group": "tenant_hierarchy"
+    },
+    {
+      "pattern": "/admin/v1/tenant-accounts/{*rest}",
+      "group": "tenant_hierarchy"
+    },
+    {
+      "pattern": "/admin/v1/tenant-data/{*rest}",
+      "group": "tenant_data"
+    },
+    {
+      "pattern": "/admin/v1/projects",
+      "group": "tenant_hierarchy"
+    },
+    {
+      "pattern": "/admin/v1/projects/{*rest}",
+      "group": "tenant_hierarchy"
+    },
+    {
+      "pattern": "/admin/v1/workspaces",
+      "group": "tenant_hierarchy"
+    },
+    {
+      "pattern": "/admin/v1/workspaces/{*rest}",
+      "group": "tenant_hierarchy"
+    },
+    {
+      "pattern": "/admin/v1/tenants",
+      "group": "tenant_hierarchy"
+    },
+    {
+      "pattern": "/admin/v1/virtual-keys",
+      "group": "admin_virtual_key"
+    },
+    {
+      "pattern": "/admin/v1/virtual-keys/{*rest}",
+      "group": "admin_virtual_key"
+    },
+    {
+      "pattern": "/admin/v1/semantic-cache-policies",
+      "group": "semantic_cache_policy"
+    },
+    {
+      "pattern": "/admin/v1/semantic-cache-policies/{*rest}",
+      "group": "semantic_cache_policy"
+    },
+    {
+      "pattern": "/admin/v1/quota-policies",
+      "group": "quota_policy"
+    },
+    {
+      "pattern": "/admin/v1/quota-policies/{*rest}",
+      "group": "quota_policy"
+    },
+    {
+      "pattern": "/admin/v1/retention-policies",
+      "group": "retention_policy"
+    },
+    {
+      "pattern": "/admin/v1/retention-policies/{*rest}",
+      "group": "retention_policy"
+    },
+    {
+      "pattern": "/v1/assets",
+      "group": "asset"
+    },
+    {
+      "pattern": "/v1/assets/{*rest}",
+      "group": "asset"
+    },
+    {
+      "pattern": "/v1/files",
+      "group": "file"
+    },
+    {
+      "pattern": "/v1/files/{*rest}",
+      "group": "file"
+    },
+    {
+      "pattern": "/v1/batches",
+      "group": "batch"
+    },
+    {
+      "pattern": "/v1/batches/{*rest}",
+      "group": "batch"
+    },
+    {
+      "pattern": "/sites/{*rest}",
+      "group": "site"
+    },
+    {
+      "pattern": "/admin/v1/site-domains",
+      "group": "site_domain"
+    },
+    {
+      "pattern": "/admin/v1/site-domains/{*rest}",
+      "group": "site_domain"
+    },
+    {
+      "pattern": "/admin/v1/assets",
+      "group": "admin_asset"
+    },
+    {
+      "pattern": "/admin/v1/assets/{*rest}",
+      "group": "admin_asset"
+    },
+    {
+      "pattern": "/admin/v1/permissions",
+      "group": "rbac"
+    },
+    {
+      "pattern": "/admin/v1/permissions/{*rest}",
+      "group": "rbac"
+    },
+    {
+      "pattern": "/admin/v1/roles",
+      "group": "rbac"
+    },
+    {
+      "pattern": "/admin/v1/roles/{*rest}",
+      "group": "rbac"
+    },
+    {
+      "pattern": "/admin/v1/tenant-roles/{*rest}",
+      "group": "rbac"
+    },
+    {
+      "pattern": "/admin/v1/plans",
+      "group": "plans"
+    },
+    {
+      "pattern": "/admin/v1/plans/{*rest}",
+      "group": "plans"
+    },
+    {
+      "pattern": "/admin/v1/wallets",
+      "group": "wallets"
+    },
+    {
+      "pattern": "/admin/v1/wallets/{*rest}",
+      "group": "wallets"
+    },
+    {
+      "pattern": "/admin/v1/payment-methods",
+      "group": "wallets"
+    },
+    {
+      "pattern": "/admin/v1/payment-methods/{*rest}",
+      "group": "wallets"
+    },
+    {
+      "pattern": "/admin/v1/metering-events",
+      "group": "billing"
+    },
+    {
+      "pattern": "/admin/v1/billing-events",
+      "group": "billing"
+    },
+    {
+      "pattern": "/admin/v1/metering-export-status",
+      "group": "billing"
+    },
+    {
+      "pattern": "/admin/v1/usage-aggregates",
+      "group": "billing"
+    },
+    {
+      "pattern": "/admin/v1/usage-reports",
+      "group": "billing"
+    },
+    {
+      "pattern": "/admin/v1/billing-outbox-dead-letters",
+      "group": "billing"
+    },
+    {
+      "pattern": "/admin/v1/billing-outbox-dead-letters/{*rest}",
+      "group": "billing"
+    },
+    {
+      "pattern": "/admin/v1/guardrail-evaluations",
+      "group": "admin_request_log"
+    },
+    {
+      "pattern": "/admin/v1/investigations",
+      "group": "admin_request_log"
+    },
+    {
+      "pattern": "/admin/v1/x402-spend-policies",
+      "group": "x402_spend_policy"
+    },
+    {
+      "pattern": "/admin/v1/x402-spend-policies/effective",
+      "group": "x402_spend_policy"
+    },
+    {
+      "pattern": "/admin/v1/x402-spend-policies/evaluate",
+      "group": "x402_spend_policy"
+    },
+    {
+      "pattern": "/admin/v1/x402-spend-policies/{*rest}",
+      "group": "x402_spend_policy"
+    },
+    {
+      "pattern": "/admin/v1/payment-attempts",
+      "group": "payment_attempt"
+    },
+    {
+      "pattern": "/admin/v1/payment-attempts/{*rest}",
+      "group": "payment_attempt"
+    },
+    {
+      "pattern": "/admin/v1/billing-groups",
+      "group": "admin_billing_group"
+    },
+    {
+      "pattern": "/admin/v1/billing-groups/{id}",
+      "group": "admin_billing_group"
+    },
+    {
+      "pattern": "/admin/v1/billing-groups/{id}/providers/{providerId}",
+      "group": "admin_billing_group"
+    }
+  ],
+  "dynamic_surfaces": [
+    {
+      "pattern": "configured host/path routes",
+      "visibility": "dynamic_proxy",
+      "reason": "Operator-defined reverse-proxy routes are data, not a stable FerroGate API contract."
+    },
+    {
+      "pattern": "OPTIONS /admin/{*rest}",
+      "visibility": "internal",
+      "reason": "CORS preflight exists only when an Admin console allowed origin is configured."
+    }
+  ],
+  "operations": [
+    {
+      "path": "/healthz",
+      "method": "get",
+      "operation_id": "getHealthz",
+      "visibility": "public",
+      "auth": {
+        "kind": "anonymous",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/readyz",
+      "method": "get",
+      "operation_id": "getReadyz",
+      "visibility": "public",
+      "auth": {
+        "kind": "anonymous",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin",
+      "method": "get",
+      "operation_id": "getAdminDashboard",
+      "visibility": "public",
+      "auth": {
+        "kind": "anonymous",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/mcp",
+      "method": "post",
+      "operation_id": "mcpJsonRpc",
+      "visibility": "public",
+      "auth": {
+        "kind": "method_dependent",
+        "scope": null,
+        "scope_discriminator": {
+          "field": "method",
+          "map": {
+            "initialize": "tools.read",
+            "notifications/initialized": "tools.read",
+            "ping": "tools.read",
+            "resources/list": "assets.read",
+            "resources/read": "assets.read",
+            "server/discover": "tools.read",
+            "tools/list": "tools.read",
+            "tools/call": "tools.execute"
+          }
+        }
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agent-runs",
+      "method": "post",
+      "operation_id": "createAgentRun",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agents.invoke"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agent-jobs",
+      "method": "post",
+      "operation_id": "submitAgentJob",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agent.runs.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agent-jobs/{run_id}",
+      "method": "get",
+      "operation_id": "getAgentJob",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agent.runs.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agent-jobs/{run_id}/events",
+      "method": "get",
+      "operation_id": "listAgentJobEvents",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agent.runs.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agent-jobs/{run_id}/result",
+      "method": "get",
+      "operation_id": "getAgentJobResult",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agent.runs.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agent-jobs/{run_id}/cancel",
+      "method": "post",
+      "operation_id": "cancelAgentJob",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agent.runs.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/mcp/tool/execute",
+      "method": "post",
+      "operation_id": "executeMcpTool",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "mcp.execute"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/mcp/identity/callback",
+      "method": "get",
+      "operation_id": "completeMcpIdentityOauth",
+      "visibility": "public",
+      "auth": {
+        "kind": "anonymous",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/mcp/identity/{server}/authorize",
+      "method": "post",
+      "operation_id": "authorizeMcpIdentity",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "tools.execute"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/mcp/identity/{server}",
+      "method": "get",
+      "operation_id": "getMcpIdentity",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "tools.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/mcp/identity/{server}",
+      "method": "delete",
+      "operation_id": "revokeMcpIdentity",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "tools.execute"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/status",
+      "method": "get",
+      "operation_id": "getAdminStatus",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/overview",
+      "method": "get",
+      "operation_id": "getAdminOverview",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/status",
+      "method": "post",
+      "operation_id": "registerAdminSelfHostedWorker",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/status",
+      "method": "get",
+      "operation_id": "getAdminStatusAlias",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/provider-credentials",
+      "method": "get",
+      "operation_id": "listProviderCredentials",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/provider-credentials/{alias}",
+      "method": "put",
+      "operation_id": "putProviderCredential",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/provider-credentials/{alias}",
+      "method": "delete",
+      "operation_id": "revokeProviderCredential",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/providers",
+      "method": "get",
+      "operation_id": "listAdminProviders",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/providers",
+      "method": "post",
+      "operation_id": "createAdminProvider",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/providers/{id}",
+      "method": "get",
+      "operation_id": "getAdminProvider",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/providers/{id}",
+      "method": "put",
+      "operation_id": "replaceAdminProvider",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/providers/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminProvider",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/providers/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminProvider",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/providers/{id}/sync-models",
+      "method": "post",
+      "operation_id": "syncProviderModels",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/provider-health",
+      "method": "get",
+      "operation_id": "listAdminProviderHealth",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/provider-models",
+      "method": "get",
+      "operation_id": "listAdminProviderModels",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers/{id}/heartbeat",
+      "method": "post",
+      "operation_id": "recordAdminSelfHostedWorkerHeartbeat",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers/{id}/events",
+      "method": "get",
+      "operation_id": "listAdminSelfHostedWorkerTelemetryEvents",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers/{id}/events",
+      "method": "post",
+      "operation_id": "recordAdminSelfHostedWorkerTelemetryEvent",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/managed-workers",
+      "method": "get",
+      "operation_id": "listAdminManagedWorkers",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/framework-adapters",
+      "method": "get",
+      "operation_id": "listAdminFrameworkAdapters",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers",
+      "method": "get",
+      "operation_id": "listAdminSelfHostedWorkers",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers/{id}",
+      "method": "get",
+      "operation_id": "getAdminSelfHostedWorker",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-worker-records",
+      "method": "get",
+      "operation_id": "listAdminSelfHostedWorkerRecords",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/observability",
+      "method": "get",
+      "operation_id": "listAdminObservability",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/extensions",
+      "method": "get",
+      "operation_id": "listAdminExtensions",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plugins",
+      "method": "get",
+      "operation_id": "listAdminPlugins",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plugins",
+      "method": "post",
+      "operation_id": "createAdminPlugin",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plugins/{plugin_id}",
+      "method": "get",
+      "operation_id": "getAdminPlugin",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plugins/{plugin_id}",
+      "method": "patch",
+      "operation_id": "updateAdminPlugin",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plugins/{plugin_id}",
+      "method": "delete",
+      "operation_id": "deleteAdminPlugin",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plugins/{plugin_id}/tools",
+      "method": "get",
+      "operation_id": "listAdminPluginTools",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tools",
+      "method": "get",
+      "operation_id": "listAdminTools",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tool-approvals",
+      "method": "get",
+      "operation_id": "listAdminToolApprovals",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tool-approvals/{approval_id}",
+      "method": "get",
+      "operation_id": "getAdminToolApproval",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tool-approvals/{approval_id}/approve",
+      "method": "post",
+      "operation_id": "approveAdminToolApproval",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tool-approvals/{approval_id}/deny",
+      "method": "post",
+      "operation_id": "denyAdminToolApproval",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tool-approvals/{approval_id}/expire",
+      "method": "post",
+      "operation_id": "expireAdminToolApproval",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/mcp-servers",
+      "method": "get",
+      "operation_id": "listAdminMcpServers",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/mcp-servers",
+      "method": "post",
+      "operation_id": "createAdminMcpServer",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/mcp-servers/{name}",
+      "method": "get",
+      "operation_id": "getAdminMcpServer",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/mcp-servers/{name}",
+      "method": "put",
+      "operation_id": "putAdminMcpServer",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/mcp-servers/{name}",
+      "method": "patch",
+      "operation_id": "patchAdminMcpServer",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/mcp-servers/{name}",
+      "method": "delete",
+      "operation_id": "deleteAdminMcpServer",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tool-sessions/{session_id}",
+      "method": "get",
+      "operation_id": "listAdminToolSessionEvents",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models",
+      "method": "get",
+      "operation_id": "listAdminModels",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models",
+      "method": "post",
+      "operation_id": "createAdminModel",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{id}",
+      "method": "get",
+      "operation_id": "getAdminModel",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{id}",
+      "method": "put",
+      "operation_id": "replaceAdminModel",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminModel",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminModel",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{model_id}/offerings",
+      "method": "get",
+      "operation_id": "listAdminModelOfferings",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{model_id}/offerings",
+      "method": "post",
+      "operation_id": "createAdminModelOffering",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{model_id}/offerings/{offering_id}",
+      "method": "get",
+      "operation_id": "getAdminModelOffering",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{model_id}/offerings/{offering_id}",
+      "method": "put",
+      "operation_id": "replaceAdminModelOffering",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{model_id}/offerings/{offering_id}",
+      "method": "patch",
+      "operation_id": "patchAdminModelOffering",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/models/{model_id}/offerings/{offering_id}",
+      "method": "delete",
+      "operation_id": "deleteAdminModelOffering",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/api-keys",
+      "method": "get",
+      "operation_id": "listAdminApiKeys",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/api-keys",
+      "method": "post",
+      "operation_id": "createAdminApiKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/api-keys/{id}",
+      "method": "get",
+      "operation_id": "getAdminApiKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/api-keys/{id}",
+      "method": "put",
+      "operation_id": "putAdminApiKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/api-keys/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminApiKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/api-keys/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminApiKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenants",
+      "method": "get",
+      "operation_id": "listAdminTenants",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/policies",
+      "method": "get",
+      "operation_id": "listAdminPolicies",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/policies",
+      "method": "post",
+      "operation_id": "createAdminPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/policies/{name}",
+      "method": "get",
+      "operation_id": "getAdminPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/policies/{name}",
+      "method": "put",
+      "operation_id": "putAdminPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/policies/{name}",
+      "method": "patch",
+      "operation_id": "patchAdminPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/policies/{name}",
+      "method": "delete",
+      "operation_id": "deleteAdminPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/request-logs",
+      "method": "get",
+      "operation_id": "listAdminRequestLogs",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-runs",
+      "method": "get",
+      "operation_id": "listAdminAgentRuns",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-runs/{run_id}",
+      "method": "get",
+      "operation_id": "getAdminAgentRunTimeline",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-runs/{run_id}",
+      "method": "get",
+      "operation_id": "getAdminSelfHostedRunTimeline",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/request-log-exports",
+      "method": "get",
+      "operation_id": "exportAdminRequestLogsJsonl",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/cost-records",
+      "method": "get",
+      "operation_id": "listAdminCostRecords",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/cost-record-exports",
+      "method": "get",
+      "operation_id": "exportAdminCostRecords",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/experiments",
+      "method": "get",
+      "operation_id": "listAdminExperiments",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/experiments/{experiment_id}",
+      "method": "get",
+      "operation_id": "getAdminExperiment",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-events",
+      "method": "get",
+      "operation_id": "listAdminBillingEventsCompat",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/metering-export-status",
+      "method": "get",
+      "operation_id": "listAdminMeteringExportStatus",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/usage-aggregates",
+      "method": "get",
+      "operation_id": "listAdminUsageAggregates",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/audit-events",
+      "method": "get",
+      "operation_id": "listAdminAuditEvents",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/config/validate",
+      "method": "post",
+      "operation_id": "validateAdminConfig",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/config/reload",
+      "method": "post",
+      "operation_id": "reloadAdminConfig",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/config/import-model-catalog",
+      "method": "post",
+      "operation_id": "importModelCatalog",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/drain",
+      "method": "get",
+      "operation_id": "getAdminDrain",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/drain",
+      "method": "post",
+      "operation_id": "setAdminDrain",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/metrics",
+      "method": "get",
+      "operation_id": "getMetrics",
+      "visibility": "internal",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/metering-events",
+      "method": "get",
+      "operation_id": "listAdminMeteringEvents",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/gateway-configs",
+      "method": "get",
+      "operation_id": "listAdminGatewayConfigs",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/gateway-configs",
+      "method": "post",
+      "operation_id": "createAdminGatewayConfig",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/gateway-configs/{id}",
+      "method": "get",
+      "operation_id": "getAdminGatewayConfig",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/gateway-configs/{id}",
+      "method": "put",
+      "operation_id": "putAdminGatewayConfig",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/gateway-configs/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminGatewayConfig",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/gateway-configs/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminGatewayConfig",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-workflows",
+      "method": "get",
+      "operation_id": "listAdminAgentWorkflows",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-workflows",
+      "method": "post",
+      "operation_id": "createAdminAgentWorkflow",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-workflows/{id}",
+      "method": "get",
+      "operation_id": "getAdminAgentWorkflow",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-workflows/{id}",
+      "method": "put",
+      "operation_id": "putAdminAgentWorkflow",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-workflows/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminAgentWorkflow",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-workflows/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminAgentWorkflow",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules",
+      "method": "get",
+      "operation_id": "listAdminAgentSchedules",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules",
+      "method": "post",
+      "operation_id": "createAdminAgentSchedule",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules/{id}",
+      "method": "get",
+      "operation_id": "getAdminAgentSchedule",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules/{id}",
+      "method": "put",
+      "operation_id": "putAdminAgentSchedule",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminAgentSchedule",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminAgentSchedule",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules/{id}/run-now",
+      "method": "post",
+      "operation_id": "runAdminAgentScheduleNow",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-schedules/{id}/fires",
+      "method": "get",
+      "operation_id": "listAdminAgentScheduleFires",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates",
+      "method": "get",
+      "operation_id": "listAdminPromptTemplates",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates",
+      "method": "post",
+      "operation_id": "createAdminPromptTemplate",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates/{id}",
+      "method": "get",
+      "operation_id": "getAdminPromptTemplate",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates/{id}",
+      "method": "put",
+      "operation_id": "putAdminPromptTemplate",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminPromptTemplate",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates/{id}",
+      "method": "delete",
+      "operation_id": "archiveAdminPromptTemplate",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates/{id}/labels",
+      "method": "get",
+      "operation_id": "listAdminPromptTemplateLabels",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates/{id}/labels/{label}",
+      "method": "put",
+      "operation_id": "putAdminPromptTemplateLabel",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/prompt-templates/{id}/labels/{label}",
+      "method": "delete",
+      "operation_id": "deleteAdminPromptTemplateLabel",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/prompts/{id}/render",
+      "method": "post",
+      "operation_id": "renderPromptTemplate",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "prompts.render"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/skills",
+      "method": "get",
+      "operation_id": "listAgentSkills",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "skills.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/skills/{id}",
+      "method": "get",
+      "operation_id": "getAgentSkill",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "skills.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-upstreams",
+      "method": "get",
+      "operation_id": "listAdminAgentUpstreams",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-upstreams",
+      "method": "post",
+      "operation_id": "createAdminAgentUpstream",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-upstreams/{id}",
+      "method": "get",
+      "operation_id": "getAdminAgentUpstream",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-upstreams/{id}",
+      "method": "put",
+      "operation_id": "putAdminAgentUpstream",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-upstreams/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminAgentUpstream",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-upstreams/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminAgentUpstream",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/.well-known/agent.json",
+      "method": "get",
+      "operation_id": "getAgentDiscovery",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agents.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/skill-packages",
+      "method": "get",
+      "operation_id": "listAdminSkillPackages",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/skill-packages",
+      "method": "post",
+      "operation_id": "createAdminSkillPackage",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/skill-packages/{id}",
+      "method": "get",
+      "operation_id": "getAdminSkillPackage",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/skill-packages/{id}",
+      "method": "put",
+      "operation_id": "putAdminSkillPackage",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/skill-packages/{id}",
+      "method": "patch",
+      "operation_id": "patchAdminSkillPackage",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/skill-packages/{id}",
+      "method": "delete",
+      "operation_id": "deleteAdminSkillPackage",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/managed-worker-sessions",
+      "method": "get",
+      "operation_id": "listAdminManagedWorkerSessions",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/observed-agent-activity",
+      "method": "get",
+      "operation_id": "listAdminObservedAgentActivity",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/agent-cost-burn",
+      "method": "get",
+      "operation_id": "listAdminAgentCostBurn",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/spend-anomalies",
+      "method": "get",
+      "operation_id": "listAdminSpendAnomalies",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers/{id}/artifacts",
+      "method": "post",
+      "operation_id": "recordAdminSelfHostedWorkerArtifact",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers/{id}/checkpoints",
+      "method": "post",
+      "operation_id": "recordAdminSelfHostedWorkerCheckpoint",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/guardrail-policies",
+      "method": "get",
+      "operation_id": "listGuardrailPolicyRevisions",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": "guardrails.policy.read"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies",
+      "method": "post",
+      "operation_id": "createGuardrailPolicyRevision",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": "guardrails.policy.create_revision"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}",
+      "method": "get",
+      "operation_id": "listGuardrailPolicyRevisionsByPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": "guardrails.policy.read"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}/revisions",
+      "method": "get",
+      "operation_id": "listGuardrailPolicyRevisionHistory",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": "guardrails.policy.read"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}/revisions",
+      "method": "post",
+      "operation_id": "createNextGuardrailPolicyRevision",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": "guardrails.policy.create_revision"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}/revisions/{revision}",
+      "method": "get",
+      "operation_id": "getGuardrailPolicyRevision",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": "guardrails.policy.read"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}/revisions/{revision}",
+      "method": "delete",
+      "operation_id": "archiveGuardrailPolicyRevision",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": "guardrails.policy.archive"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}/activate",
+      "method": "post",
+      "operation_id": "activateGuardrailPolicyRevision",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": "guardrails.policy.activate"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}/rollback",
+      "method": "post",
+      "operation_id": "rollbackGuardrailPolicyRevision",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": "guardrails.policy.rollback"
+    },
+    {
+      "path": "/admin/v1/guardrail-policies/{policy_id}/dry-run",
+      "method": "post",
+      "operation_id": "dryRunGuardrailPolicyRevision",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": "guardrails.policy.dry_run"
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers/{id}/rotate",
+      "method": "post",
+      "operation_id": "rotateAdminSelfHostedWorkerIdentity",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/",
+      "method": "get",
+      "operation_id": "getAdminDashboardSlash",
+      "visibility": "public",
+      "auth": {
+        "kind": "anonymous",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/dashboard",
+      "method": "get",
+      "operation_id": "getAdminDashboardAlias",
+      "visibility": "public",
+      "auth": {
+        "kind": "anonymous",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/models",
+      "method": "get",
+      "operation_id": "listModels",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "models.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/models/{model}",
+      "method": "get",
+      "operation_id": "getModel",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "models.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/chat/completions",
+      "method": "post",
+      "operation_id": "createChatCompletion",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "chat.completions"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/responses",
+      "method": "post",
+      "operation_id": "createResponse",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "responses.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/responses/{response_id}",
+      "method": "get",
+      "operation_id": "getResponse",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "responses.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/responses/{response_id}",
+      "method": "delete",
+      "operation_id": "deleteResponse",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "responses.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/embeddings",
+      "method": "post",
+      "operation_id": "createEmbedding",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "embeddings.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/messages",
+      "method": "post",
+      "operation_id": "createMessage",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "messages.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/messages/count_tokens",
+      "method": "post",
+      "operation_id": "countMessageTokens",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "messages.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/images/generations",
+      "method": "post",
+      "operation_id": "createImage",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "images.generate"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/rerank",
+      "method": "post",
+      "operation_id": "createRerank",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "embeddings.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/audio/transcriptions",
+      "method": "post",
+      "operation_id": "createTranscription",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "audio.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/audio/translations",
+      "method": "post",
+      "operation_id": "createTranslation",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "audio.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/audio/speech",
+      "method": "post",
+      "operation_id": "createSpeech",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "audio.create"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/tools",
+      "method": "get",
+      "operation_id": "listTools",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "tools.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/tools/execute",
+      "method": "post",
+      "operation_id": "executeTool",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "tools.execute"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/functions/execute",
+      "method": "post",
+      "operation_id": "executeFunction",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "functions.execute"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agents/{name}",
+      "method": "post",
+      "operation_id": "invokeAgent",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agents.invoke"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/self-hosted-workers/heartbeat",
+      "method": "post",
+      "operation_id": "recordSelfHostedWorkerHeartbeat",
+      "visibility": "internal",
+      "auth": {
+        "kind": "internal",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/self-hosted-workers/events",
+      "method": "post",
+      "operation_id": "recordSelfHostedWorkerEvent",
+      "visibility": "internal",
+      "auth": {
+        "kind": "internal",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/self-hosted-workers/artifacts",
+      "method": "post",
+      "operation_id": "uploadSelfHostedWorkerArtifact",
+      "visibility": "internal",
+      "auth": {
+        "kind": "internal",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/self-hosted-workers/checkpoints",
+      "method": "post",
+      "operation_id": "uploadSelfHostedWorkerCheckpoint",
+      "visibility": "internal",
+      "auth": {
+        "kind": "internal",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/self-hosted-workers/runs/poll",
+      "method": "post",
+      "operation_id": "pollSelfHostedWorkerRun",
+      "visibility": "internal",
+      "auth": {
+        "kind": "internal",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/self-hosted-workers/runs/ack",
+      "method": "post",
+      "operation_id": "acknowledgeSelfHostedWorkerRun",
+      "visibility": "internal",
+      "auth": {
+        "kind": "internal",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts",
+      "method": "get",
+      "operation_id": "listTenantAccounts",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts",
+      "method": "post",
+      "operation_id": "createTenantAccount",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts/{tenant_id}",
+      "method": "get",
+      "operation_id": "getTenantAccount",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts/{tenant_id}",
+      "method": "put",
+      "operation_id": "replaceTenantAccount",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts/{tenant_id}",
+      "method": "patch",
+      "operation_id": "updateTenantAccount",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts/{tenant_id}/resolved-defaults",
+      "method": "get",
+      "operation_id": "getTenantResolvedDefaults",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts/{tenant_id}/storage-migration",
+      "method": "post",
+      "operation_id": "migrateTenantStorage",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-data/{tenant_id}/query",
+      "method": "post",
+      "operation_id": "queryTenantData",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-data/{tenant_id}/export",
+      "method": "post",
+      "operation_id": "exportTenantData",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-data/{tenant_id}/restore",
+      "method": "post",
+      "operation_id": "restoreTenantData",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/projects",
+      "method": "get",
+      "operation_id": "listProjects",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/projects",
+      "method": "post",
+      "operation_id": "createProject",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/workspaces",
+      "method": "get",
+      "operation_id": "listWorkspaces",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/workspaces",
+      "method": "post",
+      "operation_id": "createWorkspace",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/projects/{project_id}",
+      "method": "get",
+      "operation_id": "getProject",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/projects/{project_id}",
+      "method": "put",
+      "operation_id": "replaceProject",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/projects/{project_id}",
+      "method": "patch",
+      "operation_id": "updateProject",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/projects/{project_id}",
+      "method": "delete",
+      "operation_id": "deleteProject",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/workspaces/{workspace_id}",
+      "method": "get",
+      "operation_id": "getWorkspace",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/workspaces/{workspace_id}",
+      "method": "put",
+      "operation_id": "replaceWorkspace",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/workspaces/{workspace_id}",
+      "method": "patch",
+      "operation_id": "updateWorkspace",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/workspaces/{workspace_id}",
+      "method": "delete",
+      "operation_id": "deleteWorkspace",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys",
+      "method": "get",
+      "operation_id": "listVirtualKeys",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys",
+      "method": "post",
+      "operation_id": "createVirtualKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys/{key_id}",
+      "method": "get",
+      "operation_id": "getVirtualKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys/{key_id}",
+      "method": "delete",
+      "operation_id": "revokeVirtualKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/quota-policies",
+      "method": "get",
+      "operation_id": "listQuotaPolicies",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/quota-policies",
+      "method": "post",
+      "operation_id": "createQuotaPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/quota-policies/{scope_type}/{scope_id}",
+      "method": "get",
+      "operation_id": "getQuotaPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/quota-policies/{scope_type}/{scope_id}",
+      "method": "put",
+      "operation_id": "replaceQuotaPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/quota-policies/{scope_type}/{scope_id}",
+      "method": "patch",
+      "operation_id": "updateQuotaPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/quota-policies/{scope_type}/{scope_id}",
+      "method": "delete",
+      "operation_id": "deleteQuotaPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/retention-policies/{tenant_id}/{asset_type}",
+      "method": "get",
+      "operation_id": "getAssetRetentionPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/retention-policies/{tenant_id}/{asset_type}",
+      "method": "put",
+      "operation_id": "putAssetRetentionPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/site-domains",
+      "method": "get",
+      "operation_id": "listSiteDomains",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/site-domains",
+      "method": "post",
+      "operation_id": "bindSiteDomain",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/site-domains/{hostname}",
+      "method": "get",
+      "operation_id": "getSiteDomain",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/site-domains/{hostname}",
+      "method": "delete",
+      "operation_id": "unbindSiteDomain",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/site-domains/{hostname}/verify",
+      "method": "post",
+      "operation_id": "verifySiteDomain",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/assets",
+      "method": "get",
+      "operation_id": "listFleetAssets",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/assets/quarantine",
+      "method": "get",
+      "operation_id": "listQuarantinedAssets",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/assets/quarantine/{asset_id}",
+      "method": "post",
+      "operation_id": "reviewQuarantinedAsset",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/assets/{asset_id}",
+      "method": "delete",
+      "operation_id": "forceDeleteAssetVersion",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plans",
+      "method": "get",
+      "operation_id": "listPlans",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plans",
+      "method": "post",
+      "operation_id": "createPlan",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plans/{plan_id}",
+      "method": "get",
+      "operation_id": "getPlan",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plans/{plan_id}",
+      "method": "put",
+      "operation_id": "replacePlan",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/plans/{plan_id}",
+      "method": "patch",
+      "operation_id": "updatePlan",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/wallets",
+      "method": "get",
+      "operation_id": "listWallets",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/wallets",
+      "method": "post",
+      "operation_id": "createWallet",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/wallets/{tenant_id}",
+      "method": "get",
+      "operation_id": "getWallet",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/wallets/{tenant_id}",
+      "method": "patch",
+      "operation_id": "updateWallet",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/wallets/{tenant_id}/adjust",
+      "method": "post",
+      "operation_id": "adjustWallet",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/wallets/{tenant_id}/charge",
+      "method": "post",
+      "operation_id": "chargeWallet",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/wallets/{tenant_id}/ledger",
+      "method": "get",
+      "operation_id": "listWalletLedger",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/payment-methods",
+      "method": "get",
+      "operation_id": "listPaymentMethods",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/payment-methods",
+      "method": "post",
+      "operation_id": "createPaymentMethod",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/payment-methods/{payment_method_id}",
+      "method": "delete",
+      "operation_id": "deletePaymentMethod",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets",
+      "method": "get",
+      "operation_id": "listAssets",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/storage/summary",
+      "method": "get",
+      "operation_id": "getAssetStorageSummary",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/withheld",
+      "method": "get",
+      "operation_id": "listWithheldAssets",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}",
+      "method": "get",
+      "operation_id": "listAssetsByType",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/{version}",
+      "method": "get",
+      "operation_id": "getAsset",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/{version}",
+      "method": "put",
+      "operation_id": "putAsset",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/{version}",
+      "method": "delete",
+      "operation_id": "deleteAsset",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/manifest",
+      "method": "get",
+      "operation_id": "getAssetManifest",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/channels",
+      "method": "get",
+      "operation_id": "listAssetChannels",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/channels/{channel}",
+      "method": "put",
+      "operation_id": "putAssetChannel",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/channels/{channel}",
+      "method": "delete",
+      "operation_id": "deleteAssetChannel",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/{version}/yank",
+      "method": "post",
+      "operation_id": "yankAssetVersion",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/{version}/yank",
+      "method": "delete",
+      "operation_id": "unyankAssetVersion",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/{asset_type}/{name}/{version}/visibility",
+      "method": "post",
+      "operation_id": "promoteAssetVisibility",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/presign/upload/{asset_type}/{name}/{version}",
+      "method": "post",
+      "operation_id": "createAssetUploadIntent",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/presign/commit/{asset_type}/{name}/{version}",
+      "method": "post",
+      "operation_id": "commitAssetUpload",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/presign/abort/{asset_type}/{name}/{version}",
+      "method": "post",
+      "operation_id": "abortAssetUpload",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/assets/presign/download/{asset_type}/{name}/{version}",
+      "method": "get",
+      "operation_id": "getAssetDownloadUrl",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/files",
+      "method": "get",
+      "operation_id": "listFiles",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/files",
+      "method": "post",
+      "operation_id": "createFile",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/files/{file_id}",
+      "method": "get",
+      "operation_id": "getFile",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/files/{file_id}/content",
+      "method": "get",
+      "operation_id": "getFileContent",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/files/{file_id}",
+      "method": "delete",
+      "operation_id": "deleteFile",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/batches",
+      "method": "post",
+      "operation_id": "createBatch",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/batches/{batch_id}",
+      "method": "get",
+      "operation_id": "retrieveBatch",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/batches/{batch_id}/cancel",
+      "method": "post",
+      "operation_id": "cancelBatch",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/batches",
+      "method": "get",
+      "operation_id": "listBatches",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "assets.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/sites/{*rest}",
+      "method": "get",
+      "operation_id": "serveSite",
+      "visibility": "public",
+      "auth": {
+        "kind": "anonymous",
+        "scope": null
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/permissions",
+      "method": "get",
+      "operation_id": "listPermissions",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/permissions",
+      "method": "post",
+      "operation_id": "createPermission",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/permissions/{permission_id}",
+      "method": "get",
+      "operation_id": "getPermission",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/permissions/{permission_id}",
+      "method": "delete",
+      "operation_id": "deletePermission",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/roles",
+      "method": "get",
+      "operation_id": "listRoles",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/roles",
+      "method": "post",
+      "operation_id": "createRole",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/roles/{role_id}",
+      "method": "get",
+      "operation_id": "getRole",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/roles/{role_id}",
+      "method": "delete",
+      "operation_id": "deleteRole",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-roles/{tenant_id}",
+      "method": "get",
+      "operation_id": "listTenantRoles",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-roles/{tenant_id}",
+      "method": "post",
+      "operation_id": "bindTenantRole",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-roles/{tenant_id}/{role_id}",
+      "method": "delete",
+      "operation_id": "unbindTenantRole",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/usage-reports",
+      "method": "get",
+      "operation_id": "listUsageReports",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-outbox-dead-letters",
+      "method": "get",
+      "operation_id": "listBillingOutboxDeadLetters",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-outbox-dead-letters/{report_id}/replay",
+      "method": "post",
+      "operation_id": "replayBillingOutboxDeadLetter",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/tenant-accounts/{tenant_id}/plan",
+      "method": "put",
+      "operation_id": "assignTenantPlan",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys/{key_id}/rotate",
+      "method": "post",
+      "operation_id": "rotateVirtualKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys/{key_id}/enable",
+      "method": "post",
+      "operation_id": "enableVirtualKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys/{key_id}/disable",
+      "method": "post",
+      "operation_id": "disableVirtualKey",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/virtual-keys/{key_id}/revoke",
+      "method": "post",
+      "operation_id": "revokeVirtualKeyAction",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/self-hosted-workers",
+      "method": "post",
+      "operation_id": "registerSelfHostedWorker",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agents/{name}/message:send",
+      "method": "post",
+      "operation_id": "sendAgentMessage",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agents.invoke"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/v1/agents/{name}/message:stream",
+      "method": "post",
+      "operation_id": "streamAgentMessage",
+      "visibility": "public",
+      "auth": {
+        "kind": "bearer",
+        "scope": "agents.invoke"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/guardrail-evaluations",
+      "method": "get",
+      "operation_id": "listGuardrailEvaluations",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": "guardrails.evidence.read"
+    },
+    {
+      "path": "/admin/v1/investigations",
+      "method": "get",
+      "operation_id": "getGuardrailInvestigation",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": "guardrails.evidence.read"
+    },
+    {
+      "path": "/admin/v1/x402-spend-policies",
+      "method": "get",
+      "operation_id": "listX402SpendPolicies",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/x402-spend-policies/effective",
+      "method": "get",
+      "operation_id": "getEffectiveX402SpendPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/x402-spend-policies/evaluate",
+      "method": "post",
+      "operation_id": "evaluateX402SpendPolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/payment-attempts",
+      "method": "get",
+      "operation_id": "listPaymentAttempts",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/payment-attempts/{id}",
+      "method": "get",
+      "operation_id": "getPaymentAttemptLinks",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/semantic-cache-policies",
+      "method": "get",
+      "operation_id": "listSemanticCachePolicies",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/semantic-cache-policies",
+      "method": "post",
+      "operation_id": "createSemanticCachePolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/semantic-cache-policies/{scope_type}/{scope_id}",
+      "method": "get",
+      "operation_id": "getSemanticCachePolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/semantic-cache-policies/{scope_type}/{scope_id}",
+      "method": "put",
+      "operation_id": "replaceSemanticCachePolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/semantic-cache-policies/{scope_type}/{scope_id}",
+      "method": "delete",
+      "operation_id": "deleteSemanticCachePolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/semantic-cache-policies/{scope_type}/{scope_id}/invalidate",
+      "method": "post",
+      "operation_id": "invalidateSemanticCachePolicy",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-groups",
+      "method": "get",
+      "operation_id": "listBillingGroups",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-groups",
+      "method": "post",
+      "operation_id": "createBillingGroup",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-groups/{id}",
+      "method": "get",
+      "operation_id": "getBillingGroup",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.read"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-groups/{id}",
+      "method": "patch",
+      "operation_id": "patchBillingGroup",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-groups/{id}",
+      "method": "delete",
+      "operation_id": "deleteBillingGroup",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-groups/{id}/providers/{providerId}",
+      "method": "put",
+      "operation_id": "bindBillingGroupProvider",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    },
+    {
+      "path": "/admin/v1/billing-groups/{id}/providers/{providerId}",
+      "method": "delete",
+      "operation_id": "unbindBillingGroupProvider",
+      "visibility": "admin",
+      "auth": {
+        "kind": "bearer",
+        "scope": "admin.write"
+      },
+      "rbac_action": null
+    }
+  ]
+}

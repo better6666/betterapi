@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#17202a" flood-opacity="0.14"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#52606d"/>
+    </marker>
+    <linearGradient id="header" x1="0" x2="1">
+      <stop offset="0" stop-color="#17202a"/>
+      <stop offset="1" stop-color="#273746"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#f5f7f9"/>
+  <rect width="1600" height="150" fill="url(#header)"/>
+  <text x="80" y="70" fill="#ffffff" font-family="Arial, PingFang SC, sans-serif" font-size="42" font-weight="700">FerroGate Cloudflare AI Gateway</text>
+  <text x="80" y="116" fill="#b8c4ce" font-family="Arial, PingFang SC, sans-serif" font-size="23">v2026.08.11 已验证二开基线 · Apache-2.0</text>
+  <rect x="1260" y="45" width="260" height="58" rx="8" fill="#23a36d"/>
+  <text x="1390" y="82" text-anchor="middle" fill="#ffffff" font-family="Arial, PingFang SC, sans-serif" font-size="22" font-weight="700">669 / 669 测试通过</text>
+
+  <text x="80" y="215" fill="#17202a" font-family="Arial, PingFang SC, sans-serif" font-size="25" font-weight="700">请求链路</text>
+  <rect x="80" y="255" width="230" height="120" rx="8" fill="#ffffff" stroke="#c6d0d8" stroke-width="2" filter="url(#shadow)"/>
+  <text x="195" y="305" text-anchor="middle" fill="#17202a" font-family="Arial, PingFang SC, sans-serif" font-size="24" font-weight="700">客户端</text>
+  <text x="195" y="342" text-anchor="middle" fill="#667581" font-family="Arial, PingFang SC, sans-serif" font-size="18">OpenAI / Anthropic API</text>
+
+  <rect x="430" y="235" width="340" height="160" rx="8" fill="#f48120" filter="url(#shadow)"/>
+  <text x="600" y="292" text-anchor="middle" fill="#ffffff" font-family="Arial, PingFang SC, sans-serif" font-size="27" font-weight="700">Gateway Worker</text>
+  <text x="600" y="330" text-anchor="middle" fill="#fff4e8" font-family="Arial, PingFang SC, sans-serif" font-size="18">鉴权 · 路由 · 回退 · 流式转发</text>
+  <text x="600" y="360" text-anchor="middle" fill="#fff4e8" font-family="Arial, PingFang SC, sans-serif" font-size="18">限流 · 配额 · 计量 · 策略防护</text>
+
+  <rect x="900" y="255" width="260" height="120" rx="8" fill="#ffffff" stroke="#c6d0d8" stroke-width="2" filter="url(#shadow)"/>
+  <text x="1030" y="305" text-anchor="middle" fill="#17202a" font-family="Arial, PingFang SC, sans-serif" font-size="24" font-weight="700">模型供应商</text>
+  <text x="1030" y="342" text-anchor="middle" fill="#667581" font-family="Arial, PingFang SC, sans-serif" font-size="18">OpenAI · Claude · Gemini</text>
+
+  <rect x="1270" y="235" width="250" height="160" rx="8" fill="#ffffff" stroke="#6ca6cd" stroke-width="2" filter="url(#shadow)"/>
+  <text x="1395" y="285" text-anchor="middle" fill="#17202a" font-family="Arial, PingFang SC, sans-serif" font-size="23" font-weight="700">Control Plane</text>
+  <text x="1395" y="320" text-anchor="middle" fill="#4f6575" font-family="Arial, PingFang SC, sans-serif" font-size="17">租户 · 渠道 · 模型</text>
+  <text x="1395" y="350" text-anchor="middle" fill="#4f6575" font-family="Arial, PingFang SC, sans-serif" font-size="17">虚拟 Key · 账务 · 审计</text>
+
+  <line x1="310" y1="315" x2="420" y2="315" stroke="#52606d" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="770" y1="315" x2="890" y2="315" stroke="#52606d" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="1270" y1="315" x2="1170" y2="315" stroke="#52606d" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <text x="80" y="470" fill="#17202a" font-family="Arial, PingFang SC, sans-serif" font-size="25" font-weight="700">Cloudflare 数据与运行资源</text>
+  <g font-family="Arial, PingFang SC, sans-serif">
+    <rect x="80" y="515" width="250" height="135" rx="8" fill="#ffffff" stroke="#7e57c2" stroke-width="3"/>
+    <text x="205" y="565" text-anchor="middle" fill="#4a3480" font-size="25" font-weight="700">D1</text>
+    <text x="205" y="602" text-anchor="middle" fill="#667581" font-size="17">控制面配置与共享索引</text>
+
+    <rect x="375" y="515" width="250" height="135" rx="8" fill="#ffffff" stroke="#2d8c73" stroke-width="3"/>
+    <text x="500" y="565" text-anchor="middle" fill="#1e6654" font-size="25" font-weight="700">Durable Objects</text>
+    <text x="500" y="602" text-anchor="middle" fill="#667581" font-size="17">租户隔离 · 限流 · 熔断</text>
+
+    <rect x="670" y="515" width="250" height="135" rx="8" fill="#ffffff" stroke="#2d73b9" stroke-width="3"/>
+    <text x="795" y="565" text-anchor="middle" fill="#245b8d" font-size="25" font-weight="700">R2</text>
+    <text x="795" y="602" text-anchor="middle" fill="#667581" font-size="17">文件 · 批处理 · 资源对象</text>
+
+    <rect x="965" y="515" width="250" height="135" rx="8" fill="#ffffff" stroke="#bd6b20" stroke-width="3"/>
+    <text x="1090" y="565" text-anchor="middle" fill="#8e4e17" font-size="25" font-weight="700">Queues</text>
+    <text x="1090" y="602" text-anchor="middle" fill="#667581" font-size="17">账务出站与异步处理</text>
+
+    <rect x="1270" y="515" width="250" height="135" rx="8" fill="#ffffff" stroke="#b33d63" stroke-width="3"/>
+    <text x="1395" y="565" text-anchor="middle" fill="#852d49" font-size="23" font-weight="700">Analytics Engine</text>
+    <text x="1395" y="602" text-anchor="middle" fill="#667581" font-size="17">遥测 · 用量 · 运营分析</text>
+  </g>
+
+  <line x1="600" y1="395" x2="600" y2="455" stroke="#52606d" stroke-width="4"/>
+  <line x1="205" y1="455" x2="1395" y2="455" stroke="#52606d" stroke-width="4"/>
+  <line x1="205" y1="455" x2="205" y2="505" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="500" y1="455" x2="500" y2="505" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="795" y1="455" x2="795" y2="505" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="1090" y1="455" x2="1090" y2="505" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="1395" y1="455" x2="1395" y2="505" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <text x="80" y="730" fill="#17202a" font-family="Arial, PingFang SC, sans-serif" font-size="25" font-weight="700">可部署组件</text>
+  <g font-family="Arial, PingFang SC, sans-serif" text-anchor="middle">
+    <rect x="80" y="770" width="260" height="105" rx="8" fill="#273746"/>
+    <text x="210" y="815" fill="#ffffff" font-size="21" font-weight="700">Gateway</text><text x="210" y="846" fill="#cfd8df" font-size="16">数据面 Worker</text>
+    <rect x="380" y="770" width="260" height="105" rx="8" fill="#273746"/>
+    <text x="510" y="815" fill="#ffffff" font-size="21" font-weight="700">Control Plane</text><text x="510" y="846" fill="#cfd8df" font-size="16">管理 API + 静态前端</text>
+    <rect x="680" y="770" width="260" height="105" rx="8" fill="#273746"/>
+    <text x="810" y="815" fill="#ffffff" font-size="21" font-weight="700">MCP</text><text x="810" y="846" fill="#cfd8df" font-size="16">MCP Server Worker</text>
+    <rect x="980" y="770" width="260" height="105" rx="8" fill="#273746"/>
+    <text x="1110" y="815" fill="#ffffff" font-size="21" font-weight="700">Agent Runtime</text><text x="1110" y="846" fill="#cfd8df" font-size="16">任务与工作流</text>
+    <rect x="1280" y="770" width="240" height="105" rx="8" fill="#273746"/>
+    <text x="1400" y="815" fill="#ffffff" font-size="21" font-weight="700">Telemetry</text><text x="1400" y="846" fill="#cfd8df" font-size="16">遥测接收 Worker</text>
+  </g>
+  <text x="80" y="950" fill="#71808c" font-family="Arial, PingFang SC, sans-serif" font-size="17">依据仓库 README、wrangler 配置与源码结构绘制 · 未包含任何真实账号、域名或密钥</text>
+</svg>

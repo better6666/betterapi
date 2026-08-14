@@ -1,0 +1,809 @@
+/**
+ * Where the multi-level quota and the spend/balance readings come from.
+ *
+ * **The MERGE ITSELF IS NOT IMPLEMENTED HERE.** `@ferrogate/policy`'s
+ * `resolveEffectiveQuota` already ports `ferrogate-policy/quota.rs`: min-across
+ * tenant → project → workspace → key, model-allowlist intersection,
+ * `enabled = false` anywhere is a hard deny, and a plan supplies the FLOOR (a
+ * field takes the plan default only when no policy set it). This module only
+ * decides *which policies to feed it* and turns the result into the RPM windows
+ * in `./keys.ts`.
+ *
+ * `resolveEffectiveQuota` takes its policy lookup as a closure precisely so the
+ * source is swappable, so the port is a {@link QuotaPolicySource}. Two are
+ * shipped, chosen exactly the way `resolveDeps` chooses the credential
+ * authorities — DURABLE FIRST:
+ *
+ *  - {@link d1QuotaPolicySource} — the CONTROL database's `quota_policies` +
+ *    `plans` + `tenants.plan_id`, which is what `AppState::resolve_effective_quota`
+ *    reads from Supabase in Rust. Selected whenever `CONTROL_DB` is bound.
+ *  - {@link quotaPolicySourceFromVars} — the `FG_DEV_QUOTA_POLICIES` dev var,
+ *    mirroring how `FG_DEV_API_KEYS` backs the api-key port. Fail-closed on
+ *    malformed JSON exactly as `parseJsonVar` is elsewhere in this app: an
+ *    unreadable table configures NO policies, which can only leave a limit
+ *    unset, never raise one.
+ *
+ * The two fail closed DIFFERENTLY, and the difference is Rust's: a VAR that
+ * cannot be parsed is a static misconfiguration and configures nothing, while a
+ * D1 lookup that FAILS is an outage and answers `503
+ * quota_resolution_unavailable` — a limiter that admitted every caller during a
+ * database outage would be a free-traffic hole, not graceful degradation.
+ */
+import {
+  type EffectiveQuota,
+  type QuotaScopeChain,
+  type QuotaScopeKind,
+  type StoredPlan,
+  type StoredQuotaPolicy,
+  resolveEffectiveQuota,
+} from "@ferrogate/policy";
+import {
+  type TenantDatabaseRouter,
+  WALLET_RESERVATION_ACTIVE,
+  boolFromSqlite,
+  optionalNumber,
+  periodMonthFromUnix,
+} from "@ferrogate/storage";
+
+import { controlDatabaseFrom } from "../control-data.js";
+import { type CounterWindow, requestWindows } from "./keys.js";
+
+/**
+ * Everything admission needs about one caller, projected out of the resolved
+ * `AuthContext`.
+ */
+export interface QuotaSubject {
+  /** The presented credential's id. `key`-scope windows are namespaced with it. */
+  readonly apiKeyId: string;
+  /** Tenant / project / workspace / key ids to merge policies across. */
+  readonly chain: QuotaScopeChain;
+  /**
+   * The TOK-12 per-key `api_keys.request_limit_per_minute` carried on the
+   * credential itself, independent of the quota chain. Rust
+   * `AuthContext.request_limit_per_minute`.
+   */
+  readonly requestLimitPerMinute?: number | undefined;
+}
+
+/** Supplies the policies + plan for a subject. */
+export interface QuotaPolicySource {
+  policiesFor(subject: QuotaSubject): Promise<QuotaPolicySnapshot>;
+}
+
+export type QuotaPolicySnapshot =
+  | {
+      readonly ok: true;
+      /** Rust's `lookup` closure. `undefined` = that scope does not restrict. */
+      readonly lookup: (kind: QuotaScopeKind, id: string) => StoredQuotaPolicy | undefined;
+      /** The tenant's plan, if any — the merge FLOOR (issue #168). */
+      readonly plan?: StoredPlan | undefined;
+    }
+  | { readonly ok: false; readonly detail: string };
+
+/** The merged quota plus the RPM windows it implies. */
+export type QuotaResolution =
+  | { readonly ok: true; readonly quota: EffectiveQuota; readonly rpm: CounterWindow[] }
+  | { readonly ok: false; readonly detail: string };
+
+/**
+ * Merge the chain and derive the windows.
+ *
+ * A `deniedBy` result is returned as-is on `quota` — it is a **403
+ * `quota_scope_disabled`**, not a rate-limit denial, and the caller must check
+ * for it before enforcing any window (Rust `finalize_auth` does exactly that,
+ * ahead of the budget and RPM checks).
+ */
+export async function resolveQuotaWindows(
+  source: QuotaPolicySource,
+  subject: QuotaSubject,
+): Promise<QuotaResolution> {
+  const snapshot = await source.policiesFor(subject);
+  if (!snapshot.ok) return { ok: false, detail: snapshot.detail };
+
+  const quota = resolveEffectiveQuota(subject.chain, snapshot.lookup, snapshot.plan);
+  if (quota.deniedBy !== undefined) {
+    // No windows: the request never reaches admission counting.
+    return { ok: true, quota, rpm: [] };
+  }
+  return {
+    ok: true,
+    quota,
+    rpm: requestWindows(subject.apiKeyId, quota, subject.requestLimitPerMinute),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Bindings
+// ---------------------------------------------------------------------------
+
+/** Worker bindings this module reads. */
+export interface QuotaBindings {
+  /**
+   * The CONTROL database (`sql/d1-ts/control/`), holding `quota_policies`,
+   * `plans` and `tenants`. It is the SAME binding
+   * `d1WorkerIdentityPort` already reads, so the quota chain needs no new
+   * database — only the rows.
+   */
+  readonly CONTROL_DB?: D1Database | undefined;
+  /** DEV/TEST ONLY: JSON array of `quota_policies` rows in wire (snake_case) shape. */
+  readonly FG_DEV_QUOTA_POLICIES?: string | undefined;
+}
+
+function parseJsonVar<T>(raw: string | undefined, fallback: T): T {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/** `env.X`, but only when it is really a D1 binding (a `[vars]` entry is a STRING). */
+function d1Binding(candidate: D1Database | undefined): D1Database | undefined {
+  return candidate !== undefined && typeof candidate.prepare === "function" ? candidate : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// The dev-var source
+// ---------------------------------------------------------------------------
+
+interface WirePolicy {
+  id?: string;
+  scope_type: QuotaScopeKind;
+  scope_id: string;
+  model_allowlist?: string[];
+  rpm_limit?: number;
+  tpm_limit?: number;
+  monthly_budget_usd?: number;
+  enabled?: boolean;
+}
+
+function toStoredPolicy(wire: WirePolicy): StoredQuotaPolicy {
+  return {
+    id: wire.id ?? `${wire.scope_type}:${wire.scope_id}`,
+    scopeType: wire.scope_type,
+    scopeId: wire.scope_id,
+    modelAllowlist: wire.model_allowlist ?? [],
+    rpmLimit: wire.rpm_limit,
+    tpmLimit: wire.tpm_limit,
+    monthlyBudgetUsd: wire.monthly_budget_usd,
+    alertThresholdPcts: [],
+    // Rust's default for a persisted policy row is enabled; only an explicit
+    // `false` denies, so an omitted column cannot lock a tenant out by accident.
+    enabled: wire.enabled ?? true,
+    createdAtUnix: 0,
+    updatedAtUnix: 0,
+  };
+}
+
+/**
+ * Build a {@link QuotaPolicySource} from `FG_DEV_QUOTA_POLICIES`.
+ *
+ * Policies are indexed by `"{scope_type}:{scope_id}"` — the same shape as
+ * `quotaPolicyId` in `@ferrogate/policy`, and deliberately NOT the counter key
+ * (a policy row's identity and a counter window's identity are different
+ * things; conflating them is how the `key`-scope namespacing gets lost).
+ */
+export function quotaPolicySourceFromVars(env: QuotaBindings): QuotaPolicySource {
+  const rows = parseJsonVar<WirePolicy[]>(env.FG_DEV_QUOTA_POLICIES, []);
+  const index = new Map<string, StoredQuotaPolicy>();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (typeof row?.scope_type !== "string" || typeof row?.scope_id !== "string") continue;
+    index.set(`${row.scope_type}:${row.scope_id}`, toStoredPolicy(row));
+  }
+  const lookup = (kind: QuotaScopeKind, id: string): StoredQuotaPolicy | undefined =>
+    index.get(`${kind}:${id}`);
+  return {
+    async policiesFor(): Promise<QuotaPolicySnapshot> {
+      return { ok: true, lookup };
+    },
+  };
+}
+
+/** A source that configures nothing. Used when neither a database nor a var exists. */
+export const NO_QUOTA_POLICIES: QuotaPolicySource = {
+  async policiesFor(): Promise<QuotaPolicySnapshot> {
+    return { ok: true, lookup: () => undefined };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// The D1 source — `AppState::resolve_effective_quota`'s storage half
+// ---------------------------------------------------------------------------
+
+/**
+ * The spend-anomaly auto-throttle (#697), written by the control plane's
+ * detector and overlaid onto the resolved quota here.
+ *
+ * This module, `apps/gateway/src/ratelimit/quota.ts` and
+ * `apps/mcp/src/admission/quota.ts` are deliberate CLONES — three Workers,
+ * three `wrangler.toml`s, no shared module graph — and
+ * `apps/gateway/test/fleet-control-matrix.test.ts` §3.4b is what forces the
+ * three to move together: a control whose authority table is read by only SOME
+ * of its enforcers is a control a caller routes around by using a different
+ * surface. That test failed on exactly this, which is why this copy exists.
+ */
+const SPEND_THROTTLE_TABLE = "spend_throttles";
+
+/**
+ * Is `spend_throttles` provisioned in this control database?
+ *
+ * Probed structurally and cached per handle. D1 fails a whole `batch()` when
+ * any statement in it errors, so an unconditional read would make every
+ * authenticated call answer `503 quota_resolution_unavailable` on a deployment
+ * whose control database has not had `0010_spend_anomaly.sql` applied — and
+ * deploying the Worker and applying the migration are separate operator
+ * actions. Absent ⇒ no throttle row can exist, so skipping the read cannot drop
+ * a brake that was applied; present ⇒ any failure stays a 503.
+ */
+const throttleTableCache = new WeakMap<D1Database, Promise<boolean>>();
+
+async function spendThrottlesProvisioned(db: D1Database): Promise<boolean> {
+  const cached = throttleTableCache.get(db);
+  if (cached !== undefined) return cached;
+  const probe = (async (): Promise<boolean> => {
+    const row = await db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .bind(SPEND_THROTTLE_TABLE)
+      .first<{ name: string }>();
+    return row !== null;
+  })();
+  throttleTableCache.set(db, probe);
+  // A FAILED probe must not be remembered as "not provisioned": that would turn
+  // a transient D1 blip into an isolate that never applies a brake again.
+  probe.catch(() => throttleTableCache.delete(db));
+  return probe;
+}
+
+interface ThrottleRow {
+  readonly scope_type: string;
+  readonly scope_id: string;
+  readonly rpm_limit: number;
+}
+
+/**
+ * Overlay unexpired spend auto-throttles onto the policy index.
+ *
+ * ## The one property that matters: it can only ever NARROW
+ *
+ * A throttle contributes one field, `rpmLimit`, as a `min` against whatever the
+ * operator configured. It cannot raise a limit, enable a disabled scope, widen
+ * a model allowlist or grant a budget — which is what makes it safe for an
+ * AUTOMATED writer to touch a table the admission path reads: the worst a
+ * detector bug can do is refuse traffic, which is loud and expires by itself.
+ */
+function applySpendThrottles(
+  index: Map<string, StoredQuotaPolicy>,
+  rows: readonly ThrottleRow[],
+): void {
+  for (const row of rows) {
+    const scopeType = row.scope_type;
+    if (
+      scopeType !== "tenant" &&
+      scopeType !== "project" &&
+      scopeType !== "workspace" &&
+      scopeType !== "key"
+    ) {
+      continue;
+    }
+    const rpm = row.rpm_limit;
+    if (!Number.isFinite(rpm) || rpm < 0) continue;
+    const key = `${scopeType}:${row.scope_id}`;
+    const existing = index.get(key);
+    if (existing === undefined) {
+      index.set(key, {
+        id: `spend-throttle:${key}`,
+        scopeType,
+        scopeId: row.scope_id,
+        modelAllowlist: [],
+        rpmLimit: rpm,
+        alertThresholdPcts: [],
+        // `true`, never `false`: a throttle must narrow an rpm ceiling, never
+        // become a 403 `quota_scope_disabled`.
+        enabled: true,
+        createdAtUnix: 0,
+        updatedAtUnix: 0,
+      });
+      continue;
+    }
+    index.set(key, {
+      ...existing,
+      rpmLimit: existing.rpmLimit === undefined ? rpm : Math.min(existing.rpmLimit, rpm),
+    });
+  }
+}
+
+const QUOTA_POLICY_COLUMNS =
+  "id, scope_type, scope_id, model_allowlist_json, rpm_limit, tpm_limit, " +
+  "monthly_budget_usd, enabled, created_at_unix, updated_at_unix";
+
+/** Raised inside the row decoders; caught by `policiesFor` and rendered as 503. */
+class QuotaRowError extends Error {}
+
+/** `JSON` TEXT column → array, refusing (never silently emptying) a bad value. */
+function jsonArrayColumn<T>(value: unknown, column: string, id: string): T[] {
+  if (value === null || value === undefined || value === "") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(value));
+  } catch {
+    // NOT `[]`. An unreadable allowlist that decoded to "no allowlist" would
+    // WIDEN the effective quota — the one direction a failure must never take.
+    throw new QuotaRowError(`quota_policies.${column} on row ${id} is not valid JSON`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new QuotaRowError(`quota_policies.${column} on row ${id} is not a JSON array`);
+  }
+  return parsed as T[];
+}
+
+function rowToStoredPolicy(row: Record<string, unknown>): StoredQuotaPolicy {
+  const id = String(row.id ?? "");
+  const scopeType = String(row.scope_type ?? "");
+  if (
+    scopeType !== "tenant" &&
+    scopeType !== "project" &&
+    scopeType !== "workspace" &&
+    scopeType !== "key"
+  ) {
+    // A scope kind the merge does not know cannot be applied, and DROPPING the
+    // row would silently unlimit whoever it governs.
+    throw new QuotaRowError(`quota_policies.scope_type on row ${id} is unknown: ${scopeType}`);
+  }
+  return {
+    id,
+    scopeType,
+    scopeId: String(row.scope_id ?? ""),
+    modelAllowlist: jsonArrayColumn<string>(row.model_allowlist_json, "model_allowlist_json", id),
+    rpmLimit: optionalNumber(row.rpm_limit),
+    tpmLimit: optionalNumber(row.tpm_limit),
+    monthlyBudgetUsd: optionalNumber(row.monthly_budget_usd),
+    alertThresholdPcts: [],
+    enabled: boolFromSqlite(row.enabled),
+    createdAtUnix: Number(row.created_at_unix ?? 0),
+    updatedAtUnix: Number(row.updated_at_unix ?? 0),
+  };
+}
+
+function rowToStoredPlan(row: Record<string, unknown>): StoredPlan {
+  return {
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+    slug: String(row.slug ?? ""),
+    mcpEnabled: boolFromSqlite(row.mcp_enabled),
+    selfHostedWorkersEnabled: boolFromSqlite(row.self_hosted_workers_enabled),
+    defaultModelAllowlist: [],
+    defaultRpmLimit: optionalNumber(row.default_rpm_limit),
+    defaultTpmLimit: optionalNumber(row.default_tpm_limit),
+    defaultMonthlyBudgetUsd: optionalNumber(row.default_monthly_budget_usd),
+    createdAtUnix: Number(row.created_at_unix ?? 0),
+    updatedAtUnix: Number(row.updated_at_unix ?? 0),
+    assetHostingEnabled: boolFromSqlite(row.asset_hosting_enabled),
+    extensionToolsEnabled: boolFromSqlite(row.extension_tools_enabled),
+  };
+}
+
+/**
+ * The durable {@link QuotaPolicySource}: the CONTROL database's `quota_policies`
+ * chain plus the tenant's `plans` floor.
+ *
+ * ONE `batch()`, not five queries. `resolveEffectiveQuota` walks tenant →
+ * project → workspace → key, so up to four policy rows and one plan row are
+ * needed BEFORE the request is admitted — on the hot path of every
+ * authenticated call. D1 runs a batch as one round trip inside one implicit
+ * transaction, so the reads cost one hop and cannot interleave with a
+ * control-plane write that would let the chain be read half-updated.
+ *
+ * The policy leg is ONE statement with an OR-ed `(scope_type, scope_id)`
+ * predicate rather than four, because that pair is `UNIQUE` and indexed.
+ *
+ * EVERY failure is 503, never "no policies": a source that answered
+ * `{ ok: true, lookup: () => undefined }` on a database error would turn an
+ * outage into UNLIMITED traffic for every caller.
+ */
+export function d1QuotaPolicySource(
+  db: D1Database,
+  /**
+   * The clock the #697 throttle expiry is compared against. Injectable ONLY so
+   * a test can state "this throttle expired an hour ago" without sleeping;
+   * production reads the real clock at call time, never at module load.
+   */
+  nowSeconds: () => number = () => Math.floor(Date.now() / 1000),
+): QuotaPolicySource {
+  return {
+    async policiesFor(subject: QuotaSubject): Promise<QuotaPolicySnapshot> {
+      const scopes: [QuotaScopeKind, string][] = [];
+      const { tenantId, projectId, workspaceId, keyId } = subject.chain;
+      if (tenantId !== undefined) scopes.push(["tenant", tenantId]);
+      if (projectId !== undefined) scopes.push(["project", projectId]);
+      if (workspaceId !== undefined) scopes.push(["workspace", workspaceId]);
+      if (keyId !== undefined) scopes.push(["key", keyId]);
+
+      // A credential with no scope chain at all cannot be governed by any
+      // policy row, so the round trip is skipped rather than issued with an
+      // empty predicate (which would scan the table).
+      if (scopes.length === 0) return { ok: true, lookup: () => undefined };
+
+      const predicate = scopes.map(() => "(scope_type = ? AND scope_id = ?)").join(" OR ");
+      const statements = [
+        db
+          .prepare(`SELECT ${QUOTA_POLICY_COLUMNS} FROM quota_policies WHERE ${predicate}`)
+          .bind(...scopes.flat()),
+      ];
+      // Indices are COMPUTED rather than written as literals, because the plan
+      // leg is conditional: a hard-coded `results[2]` would read the PLAN row
+      // as a throttle for a credential with no tenant, and a mis-indexed read
+      // there does not fail — it applies the wrong rpm cap to live traffic.
+      const planIndex = tenantId === undefined ? -1 : statements.length;
+      if (tenantId !== undefined) {
+        statements.push(
+          db
+            .prepare("SELECT p.* FROM plans p JOIN tenants t ON t.plan_id = p.id WHERE t.id = ?")
+            .bind(tenantId),
+        );
+      }
+      // #697 — the auto-throttle overlay, in the same batch as the chain.
+      let throttleIndex = -1;
+      try {
+        if (await spendThrottlesProvisioned(db)) {
+          throttleIndex = statements.length;
+          statements.push(
+            db
+              .prepare(
+                `SELECT scope_type, scope_id, rpm_limit
+                   FROM ${SPEND_THROTTLE_TABLE}
+                  WHERE expires_at_unix > ? AND (${predicate})`,
+              )
+              .bind(nowSeconds(), ...scopes.flat()),
+          );
+        }
+      } catch (error) {
+        // A failed PROBE is a control-database outage, and a limiter that
+        // answered "no policies" during one would be a free-traffic hole.
+        const detail = error instanceof Error ? error.message : String(error);
+        return { ok: false, detail: `cloudflare d1: spend throttle probe failed: ${detail}` };
+      }
+
+      let results: { results?: unknown[] }[];
+      try {
+        results = (await db.batch(statements)) as unknown as { results?: unknown[] }[];
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { ok: false, detail: `cloudflare d1: quota policy lookup failed: ${detail}` };
+      }
+
+      const index = new Map<string, StoredQuotaPolicy>();
+      let plan: StoredPlan | undefined;
+      try {
+        for (const row of (results[0]?.results ?? []) as Record<string, unknown>[]) {
+          const policy = rowToStoredPolicy(row);
+          index.set(`${policy.scopeType}:${policy.scopeId}`, policy);
+        }
+        if (planIndex >= 0) {
+          const planRow = (results[planIndex]?.results ?? [])[0] as
+            | Record<string, unknown>
+            | undefined;
+          if (planRow !== undefined) plan = rowToStoredPlan(planRow);
+        }
+        if (throttleIndex >= 0) {
+          applySpendThrottles(index, (results[throttleIndex]?.results ?? []) as ThrottleRow[]);
+        }
+      } catch (error) {
+        if (error instanceof QuotaRowError) return { ok: false, detail: error.message };
+        throw error;
+      }
+
+      return {
+        ok: true,
+        lookup: (kind: QuotaScopeKind, id: string): StoredQuotaPolicy | undefined =>
+          index.get(`${kind}:${id}`),
+        ...(plan === undefined ? {} : { plan }),
+      };
+    },
+  };
+}
+
+/**
+ * The {@link QuotaPolicySource} the request path gets.
+ *
+ * D1 whenever the control database is bound, the dev var otherwise — the SAME
+ * durable-first ordering `resolveDeps` uses for the two credential authorities,
+ * and for the same reason: a deployment that provisions `quota_policies` rows
+ * must not have them silently widened by a leftover dev var. One source of
+ * truth per deployment, chosen by which binding exists.
+ */
+export function quotaPolicySourceFromEnv(env: QuotaBindings): QuotaPolicySource {
+  const db = d1Binding(controlDatabaseFrom(env));
+  return db === undefined ? quotaPolicySourceFromVars(env) : d1QuotaPolicySource(db);
+}
+
+// ---------------------------------------------------------------------------
+// Spend + prepaid wallet — `finalize_auth` steps 2 and 3
+// ---------------------------------------------------------------------------
+
+/**
+ * The BALANCE half: what has already been spent, and what is left in the
+ * prepaid wallet.
+ *
+ * {@link QuotaPolicySource} answers "what is this caller allowed"; this answers
+ * "how much of it is gone". They are separate ports because they read separate
+ * DATABASES — policies live in the CONTROL database, spend lives in the TENANT
+ * database (`usage_monthly_rollups`, `wallets`, `wallet_reservations`).
+ *
+ * Both readings are RESULT types, never bare numbers: Rust maps an `Err` from
+ * either lookup to `503 quota_resolution_unavailable`, NOT to "0 spent" / "no
+ * wallet". A source that swallowed a database outage into `0` would hand every
+ * over-budget tenant unlimited spend for the duration of the outage.
+ */
+export interface SpendSource {
+  /**
+   * `get_usage_monthly_rollup(scope_type, scope_id, period_month).cost_usd`.
+   *
+   * An ABSENT rollup row is `0`, not a failure — Rust's
+   * `.map(|rollup| rollup.cost_usd).unwrap_or(0.0)`, and the normal state for a
+   * scope that has not been billed this month.
+   */
+  committedSpendUsd(
+    scopeKind: QuotaScopeKind,
+    scopeId: string,
+    periodMonth: string,
+  ): Promise<MonthlySpendReading>;
+  /**
+   * `wallet.balance_credits - reserved`, or `null` when the tenant has NO
+   * wallet row.
+   *
+   * `null` is load-bearing: the prepaid wallet is OPT-IN per tenant, so "no
+   * row" must be distinguishable from "a row at zero". A source that reported
+   * `0` for an absent wallet would refuse every tenant that has not adopted
+   * prepaid billing.
+   */
+  walletBalanceCredits(tenantId: string): Promise<WalletBalanceReading>;
+}
+
+export type MonthlySpendReading =
+  | { readonly ok: true; readonly committedSpendUsd: number }
+  | { readonly ok: false; readonly detail: string };
+
+export type WalletBalanceReading =
+  | { readonly ok: true; readonly availableCredits: number | null }
+  | { readonly ok: false; readonly detail: string };
+
+/**
+ * The source for a deployment with no tenant database bound.
+ *
+ * NOT a fail-open stub: with no `usage_monthly_rollups` table there is no
+ * recorded spend, and `0` is the TRUE reading (the same value the D1 source
+ * returns for a scope with no rollup row). Likewise `null` — no wallet table
+ * means no tenant has adopted prepaid billing, which is the case Rust never
+ * denies. Both are the Rust answer for an empty store, so binding the database
+ * can only ever TIGHTEN admission, never loosen it.
+ */
+export const NO_SPEND_SOURCE: SpendSource = {
+  async committedSpendUsd(): Promise<MonthlySpendReading> {
+    return { ok: true, committedSpendUsd: 0 };
+  },
+  async walletBalanceCredits(): Promise<WalletBalanceReading> {
+    return { ok: true, availableCredits: null };
+  },
+};
+
+/**
+ * Worker bindings the spend gate used to read.
+ *
+ * `DB` is retained only as a vestigial type field: since #821 PR2-delete the
+ * shared `ferrogate-tenant` D1 is gone and the spend/wallet reads route to the
+ * caller tenant's own Durable Object via {@link routedSpendSource}. Nothing on
+ * this Worker reads `env.DB` any more.
+ */
+export interface SpendBindings {
+  readonly DB?: D1Database | undefined;
+}
+
+/** `usage_monthly_rollups` is UNIQUE on `(period_month, scope_type, scope_id)`. */
+const MONTHLY_SPEND_SQL =
+  "SELECT cost_usd FROM usage_monthly_rollups " +
+  "WHERE period_month = ? AND scope_type = ? AND scope_id = ?";
+
+const WALLET_BALANCE_SQL = "SELECT balance_credits FROM wallets WHERE tenant_id = ?";
+
+/**
+ * The live holds — the port of Rust's
+ * `cluster_counters.reserved_wallet_credits(tenant_id)`.
+ *
+ * EXPIRED holds are excluded so a crashed request cannot strand credits
+ * forever: the expiry IS the release that JS has no `Drop` for.
+ */
+const WALLET_HELD_SQL =
+  "SELECT COALESCE(SUM(amount_credits), 0) AS held FROM wallet_reservations " +
+  "WHERE tenant_id = ? AND status = ? AND expires_at_unix > ?";
+
+/**
+ * The durable {@link SpendSource}: the tenant database's spend rollups and
+ * prepaid wallet.
+ *
+ * The wallet leg is ONE `db.batch()` — balance and live holds must be read from
+ * the same committed snapshot, or a hold that settles between the two reads is
+ * counted twice (balance already debited AND still summed as outstanding),
+ * which would refuse a tenant that is in fact funded.
+ */
+export function d1SpendSource(
+  db: D1Database,
+  nowUnixSeconds: () => number = () => Math.floor(Date.now() / 1000),
+): SpendSource {
+  return {
+    async committedSpendUsd(
+      scopeKind: QuotaScopeKind,
+      scopeId: string,
+      periodMonth: string,
+    ): Promise<MonthlySpendReading> {
+      try {
+        const row = await db
+          .prepare(MONTHLY_SPEND_SQL)
+          .bind(periodMonth, scopeKind, scopeId)
+          .first<{ cost_usd: number | null }>();
+        return { ok: true, committedSpendUsd: Number(row?.cost_usd ?? 0) };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { ok: false, detail: `cloudflare d1: monthly spend lookup failed: ${detail}` };
+      }
+    },
+
+    async walletBalanceCredits(tenantId: string): Promise<WalletBalanceReading> {
+      try {
+        const results = (await db.batch([
+          db.prepare(WALLET_BALANCE_SQL).bind(tenantId),
+          db.prepare(WALLET_HELD_SQL).bind(tenantId, WALLET_RESERVATION_ACTIVE, nowUnixSeconds()),
+        ])) as unknown as { results?: unknown[] }[];
+
+        const walletRow = (results[0]?.results ?? [])[0] as
+          | { balance_credits?: number | null }
+          | undefined;
+        // Opt-in: no wallet row means this tenant has not adopted prepaid
+        // billing and the gate must never deny it.
+        if (walletRow === undefined) return { ok: true, availableCredits: null };
+
+        const heldRow = (results[1]?.results ?? [])[0] as { held?: number | null } | undefined;
+        return {
+          ok: true,
+          availableCredits: Number(walletRow.balance_credits ?? 0) - Number(heldRow?.held ?? 0),
+        };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { ok: false, detail: `cloudflare d1: wallet balance lookup failed: ${detail}` };
+      }
+    },
+  };
+}
+
+/**
+ * The routed {@link SpendSource}: the CALLER tenant's own Durable Object, where
+ * the metering sink writes its `usage_monthly_rollups` and the wallet lives
+ * (#821). The exact mirror of `apps/gateway`'s `defaultSpendSource` routed arm.
+ *
+ * `committedSpendUsd` reads a rollup for whatever scope the budget ladder names
+ * (`tenant`/`project`/`workspace`/`key`), but ALL of a tenant's rollups live in
+ * that tenant's object, so the object is addressed by the CALLER's tenant id
+ * rather than by the rung's scope — the same handle the wallet leg reserves in.
+ * Until this existed the ladder read `env.DB`, a database a routed deployment
+ * never writes, so every budgeted scope read as `0` spent and every wallet as
+ * `null`, and both gates ran as dead code.
+ *
+ * `walletBalanceCredits(tenantId)` is passed the subject's tenant, which is the
+ * caller tenant, and carries the same cross-check the gateway makes: a handle
+ * that resolved to a different tenant is an outage (`ok: false` → 503), never a
+ * read of the wrong balance.
+ */
+export function routedSpendSource(
+  router: TenantDatabaseRouter,
+  callerTenantId: string,
+): SpendSource {
+  return {
+    async committedSpendUsd(
+      scopeKind: QuotaScopeKind,
+      scopeId: string,
+      periodMonth: string,
+    ): Promise<MonthlySpendReading> {
+      try {
+        const handle = await router.forTenant(callerTenantId);
+        return d1SpendSource(handle.db).committedSpendUsd(scopeKind, scopeId, periodMonth);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { ok: false, detail: `routed tenant spend unavailable: ${detail}` };
+      }
+    },
+    async walletBalanceCredits(tenantId: string): Promise<WalletBalanceReading> {
+      try {
+        const handle = await router.forTenant(tenantId);
+        if (handle.tenantId !== tenantId) {
+          // Reading one tenant's balance to admit another is a denial (or an
+          // admission) taken against the wrong money — the same refusal the
+          // gateway's routed spend source raises.
+          return {
+            ok: false,
+            detail:
+              `the routed tenant database is tenant ${handle.tenantId}'s but this balance check ` +
+              `is for tenant ${tenantId}; refusing rather than reading the wrong wallet`,
+          };
+        }
+        return d1SpendSource(handle.db).walletBalanceCredits(tenantId);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { ok: false, detail: `routed tenant wallet unavailable: ${detail}` };
+      }
+    },
+  };
+}
+
+/**
+ * The scope a monthly budget is CHARGED against — `finalize_auth`'s
+ * `budget_scope` argument.
+ *
+ * The winner recorded by `resolveEffectiveQuota` (the scope whose
+ * `monthly_budget_usd` won the chain's `min`) is authoritative, so a
+ * tenant/project/workspace budget is measured against that scope's AGGREGATE
+ * rollup and holds across every key under it. Counting it per key would let N
+ * keys each spend the full cap.
+ *
+ * The fallback — most specific attributed scope first — is Rust's `or_else`
+ * arm, reached when a budget has no recorded scope (it came from the plan FLOOR
+ * rather than from a policy row). `null` means the request carries no
+ * attribution at all, which Rust answers `Ok(false)`: nothing to measure, so
+ * nothing to refuse.
+ */
+export function monthlyBudgetScope(
+  quota: EffectiveQuota,
+  chain: QuotaScopeChain,
+): { readonly kind: QuotaScopeKind; readonly id: string } | null {
+  const winner = quota.monthlyBudgetScope;
+  if (winner !== undefined) return { kind: winner.kind, id: winner.id };
+  const candidates: [QuotaScopeKind, string | undefined][] = [
+    ["key", chain.keyId],
+    ["workspace", chain.workspaceId],
+    ["project", chain.projectId],
+    ["tenant", chain.tenantId],
+  ];
+  for (const [kind, id] of candidates) {
+    if (id !== undefined && id !== "") return { kind, id };
+  }
+  return null;
+}
+
+/**
+ * The full ladder of monthly budgets a request must satisfy (#679), broadest
+ * scope first.
+ *
+ * EVERY rung is enforced, because each is measured against a different
+ * aggregate: a project rung against the project's rollup (every key under it),
+ * a key rung against that one credential. Enforcing only the scope that won the
+ * chain's `min` — which is all {@link monthlyBudgetScope} can name — leaves
+ * every ancestor cap unevaluated, and a cap that is never evaluated is not a
+ * cap: `project = $5,000` with `key = $100` mins to $100 at the key, so fifty
+ * keys spend $100 each of a project that is already at $5,000.
+ *
+ * The fallback keeps the pre-#679 behaviour for a quota that carries a budget
+ * but no ladder (a plan floor on a chain with no tenant id, or a hand-built
+ * `EffectiveQuota`): the single scope {@link monthlyBudgetScope} picks.
+ */
+export function monthlyBudgetCharges(
+  quota: EffectiveQuota,
+  chain: QuotaScopeChain,
+): { readonly kind: QuotaScopeKind; readonly id: string; readonly limitUsd: number }[] {
+  const ladder = quota.monthlyBudgets ?? [];
+  if (ladder.length > 0) {
+    return ladder.map((rung) => ({
+      kind: rung.scope.kind,
+      id: rung.scope.id,
+      limitUsd: rung.limitUsd,
+    }));
+  }
+  const budgetUsd = quota.monthlyBudgetUsd;
+  if (budgetUsd === undefined) return [];
+  const scope = monthlyBudgetScope(quota, chain);
+  if (scope === null) return [];
+  return [{ kind: scope.kind, id: scope.id, limitUsd: budgetUsd }];
+}
+
+/** The current UTC `YYYY-MM`, Rust `AppState::current_period_month`. */
+export function currentPeriodMonth(nowUnixSeconds: number = Math.floor(Date.now() / 1000)): string {
+  return periodMonthFromUnix(nowUnixSeconds);
+}

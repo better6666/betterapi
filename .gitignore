@@ -1,0 +1,43 @@
+/target
+/.jcode/cmake-venv
+Cargo.lock.bak
+*.log
+.env
+# Wrangler local secrets (`wrangler dev` reads these). They hold real provider
+# tokens and dev API keys; never commit one.
+.dev.vars
+.dev.vars.*
+.DS_Store
+.references/
+perf-reports/
+
+# Local agent/dev tooling — machine-specific, not shared repo state.
+.claude/
+.agents/
+.mcp.json
+skills-lock.json
+/supabase/
+
+# JS/TS build artifacts (any package in the repo, not just admin-console/ --
+# admin-console/.gitignore already covers that directory specifically)
+node_modules/
+dist/
+dist-ssr/
+*.tsbuildinfo
+.wrangler/
+playwright-report/
+test-results/
+# `outputDir` in e2e/playwright.config.ts — per-run traces/screenshots and
+# .last-run.json. Not `playwright-report/`, so it needs its own entry.
+.playwright/
+
+# Wiki build outputs
+ferrogate-wiki/wiki-site/node_modules/
+ferrogate-wiki/wiki-site/public/
+ferrogate-wiki/wiki-site/quartz/.quartz-cache/
+ferrogate-wiki/wiki-site/.quartz-cache/
+ferrogate-wiki/wiki-site/.cache/
+ferrogate-wiki/wiki-site/tsconfig.tsbuildinfo
+scripts/release-dryrun/__pycache__/
+scripts/__pycache__/
+sdks/python/**/__pycache__/

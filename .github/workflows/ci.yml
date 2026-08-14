@@ -1,0 +1,117 @@
+# Token4AI Cloud Attribution
+# Developed by the commercial cloud service company represented by https://token4ai.cloud.
+# Author: jamesduan (X: https://x.com/JamesDuanL)
+# description: Token4AI Cloud, FerroGate AI Gateway on Cloudflare Workers, agent-native AI traffic infrastructure.
+
+# CI for the TypeScript / Cloudflare Workers tree.
+#
+# RELEASE-GATE ONLY, by owner directive (2026-08-02): this does NOT run on push
+# or pull request. Day-to-day verification happens LOCALLY, where the same suite
+# runs under `@cloudflare/vitest-pool-workers` (real workerd, offline, no Docker,
+# no account, no credentials) in well under a minute per workspace. A hosted
+# runner takes six minutes to tell you what a local run already told you, and
+# waiting on it is the single largest source of latency in the dev loop.
+#
+# This is NOT the shape the deleted Rust gate had, even though the trigger
+# matches. That one called twelve `rust-*.yml` files that no longer existed and
+# was required by branch protection, so it could never report and every push
+# bypassed the rule. This one resolves, runs, and is not a required status
+# check — it is a last look before a release goes out, not a gate people learn
+# to route around.
+#
+# The property that made per-push CI attractive — that a tree unchecked between
+# releases accumulates never-executed tests — is preserved by the local
+# discipline instead: every change is expected to run the suites it touches, and
+# every PR is audited by an independent agent that re-runs them.
+
+name: CI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned to the repo's `packageManager` field. Keep the two in step —
+          # a floating version here would let a Bun release change resolution
+          # without a commit that says so.
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check current storage topology
+        run: bun scripts/check-current-topology.mjs
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      # Runs every workspace's vitest suite. `vitest-pool-workers` boots real
+      # workerd in-process, so this covers the Worker composition roots and the
+      # Durable Object classes, not just pure functions.
+      - name: Test
+        run: bun run test
+
+      # `sdks/python` has no `package.json`, so it is NOT a bun workspace and
+      # `bun run test` (which is `bun run --filter '*' test`) cannot reach it.
+      # Without this step its suite only runs when a human remembers to type the
+      # root script — which is precisely how a hand-written client that mirrors
+      # a machine-readable contract turns into a rotting duplicate.
+      #
+      # A separate step rather than a line inside `test:*` because the failure
+      # should read as "the Python SDK broke", not as an opaque workspace error.
+      - name: Test (Python SDK)
+        run: bun run test:sdk-python
+
+      # BLOCKING as of #706. `bun run lint` (`biome check .`) is clean on this
+      # tree: 0 errors, with 81 `noExplicitAny` diagnostics that biome.jsonc keeps
+      # at `warn` on purpose. A lint error now fails the build.
+      #
+      # Zero was reached WITHOUT turning any rule off (see the #706 PR): formatter
+      # + SAFE autofixes only, hand-fixes for the non-autofixable tail
+      # (noAssignInExpressions, useOptionalChain, the admin-console a11y set, ...),
+      # and narrow per-line `biome-ignore` comments — each with a concrete reason —
+      # only where a mechanical fix would change behavior. The non-null-assertion
+      # set (idiomatic here because of `noUncheckedIndexedAccess`) became
+      # `x as NonNullable<typeof x>` casts / a typed helper, NOT the unsafe
+      # `x!.y -> x?.y` rewrite that silently weakens assertions. Generated
+      # artifacts (`**/*.generated.ts`, `docs/openapi`) are in biome.jsonc's
+      # `files.ignore` because the drift gate owns their byte-exact shape — no lint
+      # RULE is disabled.
+      - name: Lint (blocking — biome check . must be clean, see #706)
+        id: lint
+        run: |
+          set +e
+          bun run lint 2>&1 | tee /tmp/lint.txt
+          status=${PIPESTATUS[0]}
+          {
+            echo "## Lint"
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo "Clean — the lint gate is blocking (0 errors; \`noExplicitAny\` stays a warning)."
+            else
+              echo "Lint FAILED — this gate is blocking."
+              echo
+              echo '```'
+              tail -20 /tmp/lint.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

@@ -1,0 +1,2684 @@
+-- Token4AI Cloud Attribution
+-- Developed by the commercial cloud service company represented by https://token4ai.cloud.
+-- Author: jamesduan (X: https://x.com/JamesDuanL)
+-- Created: 2026-06-11
+-- description: Token4AI Cloud, FerroGate AI Gateway, Rust API Gateway, agent-native AI traffic infrastructure.
+
+CREATE TABLE IF NOT EXISTS control_plane_resources (
+    resource_kind TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    document_json JSONB NOT NULL,
+    revision BIGINT NOT NULL DEFAULT 1,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    PRIMARY KEY (resource_kind, resource_id)
+);
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'control_plane_resources'
+          AND column_name = 'document_json'
+          AND data_type <> 'jsonb'
+    ) THEN
+        ALTER TABLE control_plane_resources
+            ALTER COLUMN document_json TYPE JSONB USING document_json::JSONB;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_control_plane_resources_kind
+    ON control_plane_resources(resource_kind, resource_id);
+
+CREATE INDEX IF NOT EXISTS idx_control_plane_resources_document_gin
+    ON control_plane_resources USING GIN(document_json);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    trace_id TEXT,
+    tenant TEXT,
+    status TEXT NOT NULL,
+    provider TEXT,
+    started_at_unix BIGINT NOT NULL,
+    completed_at_unix BIGINT,
+    run_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_started
+    ON agent_runs(tenant, started_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_request
+    ON agent_runs(request_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_trace
+    ON agent_runs(trace_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status
+    ON agent_runs(status);
+
+CREATE TABLE IF NOT EXISTS agent_run_events (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    trace_id TEXT,
+    tenant TEXT,
+    turn BIGINT NOT NULL,
+    kind TEXT NOT NULL,
+    target TEXT,
+    outcome TEXT,
+    occurred_at_unix BIGINT NOT NULL,
+    event_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_run_events_run_time
+    ON agent_run_events(run_id, occurred_at_unix ASC);
+
+CREATE INDEX IF NOT EXISTS idx_agent_run_events_tenant_time
+    ON agent_run_events(tenant, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_agent_run_events_request
+    ON agent_run_events(request_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_run_events_trace
+    ON agent_run_events(trace_id);
+
+CREATE TABLE IF NOT EXISTS managed_worker_templates (
+    id TEXT PRIMARY KEY,
+    framework_adapter TEXT NOT NULL,
+    isolation_backend_kind TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    max_tenant_sessions BIGINT,
+    max_workspace_sessions BIGINT,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_templates_enabled_adapter
+    ON managed_worker_templates(enabled, framework_adapter);
+
+CREATE TABLE IF NOT EXISTS agent_worker_instances (
+    id TEXT PRIMARY KEY,
+    process_name TEXT NOT NULL,
+    host_id TEXT,
+    worker_version TEXT,
+    status TEXT NOT NULL,
+    started_at_unix BIGINT NOT NULL,
+    last_seen_at_unix BIGINT,
+    process_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_worker_instances_status_seen
+    ON agent_worker_instances(status, last_seen_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS managed_worker_sessions (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    worker_template_id TEXT NOT NULL REFERENCES managed_worker_templates(id),
+    agent_worker_instance_id TEXT REFERENCES agent_worker_instances(id),
+    status TEXT NOT NULL,
+    isolation_backend_kind TEXT NOT NULL,
+    microvm_id TEXT,
+    capability_envelope_id TEXT NOT NULL,
+    requested_at_unix BIGINT NOT NULL,
+    started_at_unix BIGINT,
+    completed_at_unix BIGINT,
+    cleanup_completed_at_unix BIGINT,
+    capability_envelope_json JSONB NOT NULL DEFAULT '{}'::JSONB,
+    resource_limits_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_sessions_tenant_status
+    ON managed_worker_sessions(tenant, status, requested_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_sessions_workspace_status
+    ON managed_worker_sessions(workspace_id, status, requested_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_sessions_agent_worker
+    ON managed_worker_sessions(agent_worker_instance_id, requested_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_sessions_run
+    ON managed_worker_sessions(run_id);
+
+CREATE TABLE IF NOT EXISTS managed_worker_lifecycle_events (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES managed_worker_sessions(id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    agent_worker_instance_id TEXT REFERENCES agent_worker_instances(id),
+    status TEXT NOT NULL,
+    action TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    occurred_at_unix BIGINT NOT NULL,
+    evidence_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_lifecycle_session_time
+    ON managed_worker_lifecycle_events(session_id, occurred_at_unix ASC);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_lifecycle_tenant_time
+    ON managed_worker_lifecycle_events(tenant, occurred_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS managed_worker_isolation_selections (
+    session_id TEXT PRIMARY KEY REFERENCES managed_worker_sessions(id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    agent_worker_instance_id TEXT REFERENCES agent_worker_instances(id),
+    backend_name TEXT NOT NULL,
+    backend_version TEXT NOT NULL,
+    backend_kind TEXT NOT NULL,
+    host_lifecycle_owner TEXT NOT NULL,
+    gateway_controls_backend BOOLEAN NOT NULL,
+    capability_envelope_id TEXT NOT NULL,
+    selected_at_unix BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_isolation_selection_backend
+    ON managed_worker_isolation_selections(backend_kind, selected_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS managed_worker_isolation_policies (
+    session_id TEXT PRIMARY KEY REFERENCES managed_worker_sessions(id) ON DELETE CASCADE,
+    cpu_count INTEGER NOT NULL,
+    memory_mib INTEGER NOT NULL,
+    disk_mib INTEGER NOT NULL,
+    max_runtime_millis BIGINT,
+    direct_public_egress BOOLEAN NOT NULL,
+    gateway_control_channel BOOLEAN NOT NULL,
+    governed_egress BOOLEAN NOT NULL,
+    read_only_rootfs BOOLEAN NOT NULL,
+    writable_workspace BOOLEAN NOT NULL,
+    host_path_mounts BOOLEAN NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_isolation_policy_egress
+    ON managed_worker_isolation_policies(direct_public_egress, governed_egress);
+
+CREATE TABLE IF NOT EXISTS managed_worker_isolation_evidence (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES managed_worker_sessions(id) ON DELETE CASCADE,
+    lifecycle_event_id TEXT NOT NULL REFERENCES managed_worker_lifecycle_events(id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    agent_worker_instance_id TEXT REFERENCES agent_worker_instances(id),
+    isolation_instance_id TEXT,
+    action TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    failure_reason TEXT,
+    occurred_at_unix BIGINT NOT NULL,
+    evidence_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_isolation_evidence_session_time
+    ON managed_worker_isolation_evidence(session_id, occurred_at_unix ASC);
+
+CREATE INDEX IF NOT EXISTS idx_managed_worker_isolation_evidence_outcome
+    ON managed_worker_isolation_evidence(outcome, occurred_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS self_hosted_worker_registrations (
+    id TEXT PRIMARY KEY,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    worker_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    identity_fingerprint TEXT NOT NULL,
+    identity_expires_at_unix BIGINT,
+    orchestration_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    registered_at_unix BIGINT NOT NULL,
+    last_seen_at_unix BIGINT,
+    trust_level TEXT NOT NULL,
+    capability_envelope_json JSONB NOT NULL DEFAULT '{}'::JSONB,
+    -- High-entropy secret keying the symmetric-AEAD transport, provisioned
+    -- server-side (distinct from the public identity_fingerprint). Empty means
+    -- a pre-migration row: the transport fails closed until re-registration.
+    token_secret TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_registrations_tenant_status
+    ON self_hosted_worker_registrations(tenant, status, last_seen_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_registrations_workspace_status
+    ON self_hosted_worker_registrations(workspace_id, status, last_seen_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_registrations_identity
+    ON self_hosted_worker_registrations(identity_fingerprint);
+
+ALTER TABLE self_hosted_worker_registrations
+    ADD COLUMN IF NOT EXISTS identity_expires_at_unix BIGINT;
+
+ALTER TABLE self_hosted_worker_registrations
+    ADD COLUMN IF NOT EXISTS token_secret TEXT NOT NULL DEFAULT '';
+
+-- Placed AFTER the ADD COLUMN so an upgrade (table predates the column) does not
+-- fail building this index over a not-yet-existent column.
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_registrations_identity_expiry
+    ON self_hosted_worker_registrations(identity_expires_at_unix);
+
+CREATE TABLE IF NOT EXISTS self_hosted_worker_heartbeats (
+    id TEXT PRIMARY KEY,
+    worker_id TEXT NOT NULL REFERENCES self_hosted_worker_registrations(id) ON DELETE CASCADE,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reported_at_unix BIGINT NOT NULL,
+    observed_at_unix BIGINT NOT NULL,
+    heartbeat_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_heartbeats_worker_time
+    ON self_hosted_worker_heartbeats(worker_id, reported_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_heartbeats_tenant_time
+    ON self_hosted_worker_heartbeats(tenant, reported_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS self_hosted_worker_telemetry_events (
+    id TEXT PRIMARY KEY,
+    worker_id TEXT NOT NULL REFERENCES self_hosted_worker_registrations(id) ON DELETE CASCADE,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    session_id TEXT,
+    run_id TEXT,
+    kind TEXT NOT NULL,
+    trust_level TEXT NOT NULL,
+    occurred_at_unix BIGINT NOT NULL,
+    ingested_at_unix BIGINT NOT NULL,
+    event_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_telemetry_worker_time
+    ON self_hosted_worker_telemetry_events(worker_id, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_telemetry_run_time
+    ON self_hosted_worker_telemetry_events(run_id, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_telemetry_tenant_kind_time
+    ON self_hosted_worker_telemetry_events(tenant, kind, occurred_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS self_hosted_worker_artifacts (
+    id TEXT PRIMARY KEY,
+    worker_id TEXT NOT NULL REFERENCES self_hosted_worker_registrations(id) ON DELETE CASCADE,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    artifact_name TEXT NOT NULL,
+    content_type TEXT,
+    size_bytes BIGINT NOT NULL,
+    trust_level TEXT NOT NULL,
+    created_at_unix BIGINT NOT NULL,
+    artifact_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_artifacts_run
+    ON self_hosted_worker_artifacts(run_id, created_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_artifacts_worker_time
+    ON self_hosted_worker_artifacts(worker_id, created_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS self_hosted_worker_checkpoints (
+    id TEXT PRIMARY KEY,
+    worker_id TEXT NOT NULL REFERENCES self_hosted_worker_registrations(id) ON DELETE CASCADE,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    checkpoint_name TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    trust_level TEXT NOT NULL,
+    created_at_unix BIGINT NOT NULL,
+    checkpoint_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_checkpoints_run
+    ON self_hosted_worker_checkpoints(run_id, created_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_worker_checkpoints_worker_time
+    ON self_hosted_worker_checkpoints(worker_id, created_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS self_hosted_run_dispatches (
+    dispatch_id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    tenant TEXT,
+    workspace_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    framework_adapter TEXT NOT NULL,
+    workload_ref TEXT NOT NULL,
+    queued_at_unix BIGINT NOT NULL,
+    assigned_worker_id TEXT REFERENCES self_hosted_worker_registrations(id) ON DELETE SET NULL,
+    lease_id TEXT,
+    lease_expires_at_unix BIGINT,
+    attempt BIGINT NOT NULL DEFAULT 0,
+    acknowledged_status TEXT,
+    acknowledged_at_unix BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS self_hosted_run_dispatch_capabilities (
+    dispatch_id TEXT NOT NULL REFERENCES self_hosted_run_dispatches(dispatch_id) ON DELETE CASCADE,
+    capability TEXT NOT NULL,
+    PRIMARY KEY (dispatch_id, capability)
+);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_run_dispatches_tenant_queue
+    ON self_hosted_run_dispatches(tenant, acknowledged_status, queued_at_unix ASC);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_run_dispatches_worker_lease
+    ON self_hosted_run_dispatches(assigned_worker_id, lease_expires_at_unix);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_run_dispatches_run
+    ON self_hosted_run_dispatches(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_self_hosted_run_dispatch_capabilities_capability
+    ON self_hosted_run_dispatch_capabilities(capability, dispatch_id);
+
+CREATE TABLE IF NOT EXISTS request_logs (
+    request_id TEXT PRIMARY KEY,
+    trace_id TEXT,
+    agent_run_id TEXT,
+    workflow_id TEXT,
+    workflow_version TEXT,
+    workflow_node_id TEXT,
+    cluster_id TEXT,
+    node_id TEXT,
+    tenant TEXT,
+    route TEXT,
+    provider TEXT,
+    logical_model TEXT,
+    provider_model TEXT,
+    gateway_config_id TEXT,
+    gateway_config_revision BIGINT,
+    status_code INTEGER,
+    error_code TEXT,
+    cache_status TEXT,
+    started_at_unix BIGINT NOT NULL,
+    completed_at_unix BIGINT,
+    request_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_tenant_started
+    ON request_logs(tenant, started_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_model_provider_started
+    ON request_logs(logical_model, provider, started_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_trace
+    ON request_logs(trace_id);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_agent_run
+    ON request_logs(agent_run_id);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_status
+    ON request_logs(status_code, error_code);
+
+-- Immutable Guardrail policy content is separated from its mutable active
+-- binding. Activation and rollback update only the binding row, so a revision
+-- used for an earlier decision can always be reconstructed byte-for-byte.
+CREATE TABLE IF NOT EXISTS guardrail_policy_revisions (
+    policy_id TEXT NOT NULL,
+    revision BIGINT NOT NULL CHECK (revision > 0),
+    immutable_id TEXT NOT NULL UNIQUE,
+    created_at_unix BIGINT NOT NULL,
+    created_by TEXT NOT NULL,
+    policy_json JSONB NOT NULL,
+    PRIMARY KEY (policy_id, revision)
+);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_policy_revisions_created
+    ON guardrail_policy_revisions(policy_id, created_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS guardrail_policy_bindings (
+    policy_id TEXT PRIMARY KEY,
+    active_revision BIGINT,
+    archived_revisions_json JSONB NOT NULL DEFAULT '[]'::JSONB,
+    updated_at_unix BIGINT NOT NULL,
+    updated_by TEXT NOT NULL,
+    generation BIGINT NOT NULL DEFAULT 0 CHECK (generation >= 0),
+    CONSTRAINT fk_guardrail_policy_active_revision
+        FOREIGN KEY (policy_id, active_revision)
+        REFERENCES guardrail_policy_revisions(policy_id, revision)
+        DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_policy_bindings_active
+    ON guardrail_policy_bindings(active_revision)
+    WHERE active_revision IS NOT NULL;
+
+-- Sanitized Guardrail evidence is stored separately from general audit logs.
+-- The overall row answers what the policy decided; child rows preserve every
+-- check verdict and detector failure without storing prompt or matched text.
+CREATE TABLE IF NOT EXISTS guardrail_evaluations (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    trace_id TEXT,
+    agent_run_id TEXT,
+    subject_id TEXT,
+    tenant_id TEXT,
+    scope_type TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    target TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    policy_id TEXT NOT NULL,
+    policy_revision BIGINT NOT NULL CHECK (policy_revision > 0),
+    verdict TEXT NOT NULL,
+    action TEXT NOT NULL,
+    enforcement_status TEXT NOT NULL,
+    occurred_at_unix BIGINT NOT NULL,
+    evaluation_json JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_evaluations_request
+    ON guardrail_evaluations(request_id, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_evaluations_trace
+    ON guardrail_evaluations(trace_id, occurred_at_unix DESC)
+    WHERE trace_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_evaluations_agent_run
+    ON guardrail_evaluations(agent_run_id, occurred_at_unix DESC)
+    WHERE agent_run_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_evaluations_tenant_time
+    ON guardrail_evaluations(tenant_id, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_evaluations_policy_time
+    ON guardrail_evaluations(policy_id, policy_revision, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_evaluations_verdict_action
+    ON guardrail_evaluations(verdict, action, occurred_at_unix DESC);
+
+CREATE TABLE IF NOT EXISTS guardrail_check_evaluations (
+    id TEXT PRIMARY KEY,
+    evaluation_id TEXT NOT NULL REFERENCES guardrail_evaluations(id) ON DELETE CASCADE,
+    check_id TEXT NOT NULL,
+    detector_id TEXT NOT NULL,
+    detector_version TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    action TEXT NOT NULL,
+    enforcement_status TEXT NOT NULL,
+    error_kind TEXT,
+    check_json JSONB NOT NULL,
+    UNIQUE (evaluation_id, check_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_checks_evaluation
+    ON guardrail_check_evaluations(evaluation_id, check_id);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_checks_detector_verdict
+    ON guardrail_check_evaluations(detector_id, verdict);
+
+CREATE INDEX IF NOT EXISTS idx_guardrail_checks_error
+    ON guardrail_check_evaluations(error_kind)
+    WHERE error_kind IS NOT NULL;
+
+ALTER TABLE guardrail_evaluations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guardrail_check_evaluations ENABLE ROW LEVEL SECURITY;
+
+-- These policies protect non-owner SQL/PostgREST roles. FerroGate currently
+-- connects with the schema owner/service role, and PostgreSQL table owners
+-- (and superusers) bypass ordinary RLS unless FORCE ROW LEVEL SECURITY is
+-- enabled. Owner-backed gateway access therefore still relies on the admin API
+-- authentication, tenant pinning, and database-backed RBAC checks.
+--
+-- `ferrogate.tenant_id` and `ferrogate.platform_mode` are trusted session
+-- context: connection middleware may set one tenant id, or explicitly set
+-- platform mode to `on`. Do not expose a direct SQL login that can change these
+-- custom settings to an untrusted tenant principal.
+DROP POLICY IF EXISTS guardrail_evaluations_tenant_scope ON guardrail_evaluations;
+CREATE POLICY guardrail_evaluations_tenant_scope ON guardrail_evaluations
+    FOR ALL
+    USING (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    )
+    WITH CHECK (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    );
+
+-- Check rows inherit their tenant boundary from the parent evaluation. The
+-- explicit parent predicate also prevents a tenant session from attaching a
+-- check to an evaluation owned by another tenant.
+DROP POLICY IF EXISTS guardrail_checks_tenant_scope ON guardrail_check_evaluations;
+CREATE POLICY guardrail_checks_tenant_scope ON guardrail_check_evaluations
+    FOR ALL
+    USING (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR EXISTS (
+            SELECT 1
+            FROM guardrail_evaluations AS parent
+            WHERE parent.id = guardrail_check_evaluations.evaluation_id
+              AND parent.tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+        )
+    )
+    WITH CHECK (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR EXISTS (
+            SELECT 1
+            FROM guardrail_evaluations AS parent
+            WHERE parent.id = guardrail_check_evaluations.evaluation_id
+              AND parent.tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+        )
+    );
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id TEXT PRIMARY KEY,
+    request_id TEXT,
+    trace_id TEXT,
+    agent_run_id TEXT,
+    workflow_id TEXT,
+    workflow_version TEXT,
+    workflow_node_id TEXT,
+    cluster_id TEXT,
+    node_id TEXT,
+    actor_api_key_id TEXT,
+    tenant TEXT,
+    action TEXT NOT NULL,
+    target TEXT,
+    outcome TEXT NOT NULL,
+    occurred_at_unix BIGINT NOT NULL,
+    audit_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_tenant_time
+    ON audit_events(tenant, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_actor_time
+    ON audit_events(actor_api_key_id, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_action_outcome
+    ON audit_events(action, outcome);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_request
+    ON audit_events(request_id);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_trace
+    ON audit_events(trace_id);
+
+-- Issue #231: agent-run timeline/summary reads filter audit events by
+-- agent_run_id in SQL instead of loading the whole table.
+CREATE INDEX IF NOT EXISTS idx_audit_events_agent_run
+    ON audit_events(agent_run_id)
+    WHERE agent_run_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS billing_metering_events (
+    request_id TEXT PRIMARY KEY,
+    trace_id TEXT,
+    agent_run_id TEXT,
+    workflow_id TEXT,
+    workflow_version TEXT,
+    workflow_node_id TEXT,
+    cluster_id TEXT,
+    node_id TEXT,
+    tenant TEXT NOT NULL,
+    logical_model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_model TEXT,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    usage_source TEXT NOT NULL,
+    status_code INTEGER,
+    occurred_at_unix BIGINT NOT NULL,
+    event_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_billing_metering_tenant_time
+    ON billing_metering_events(tenant, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_billing_metering_model_provider_time
+    ON billing_metering_events(logical_model, provider, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_billing_metering_provider_model_time
+    ON billing_metering_events(provider, provider_model, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_billing_metering_trace
+    ON billing_metering_events(trace_id);
+
+CREATE TABLE IF NOT EXISTS usage_aggregates (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT,
+    project_id TEXT,
+    api_key_id TEXT,
+    tenant TEXT,
+    logical_model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    usage_json JSONB NOT NULL DEFAULT '{}'::JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_aggregates_org_project_model_provider
+    ON usage_aggregates(organization_id, project_id, logical_model, provider);
+
+CREATE INDEX IF NOT EXISTS idx_usage_aggregates_api_key_model_provider
+    ON usage_aggregates(api_key_id, logical_model, provider);
+
+CREATE INDEX IF NOT EXISTS idx_usage_aggregates_tenant_model_provider
+    ON usage_aggregates(tenant, logical_model, provider);
+
+CREATE TABLE IF NOT EXISTS tenant_contexts (
+    id TEXT PRIMARY KEY,
+    organization_id TEXT,
+    team_id TEXT,
+    project_id TEXT,
+    user_id TEXT,
+    api_key_id TEXT
+);
+
+-- Added after the multi-tenant hierarchy (TOK-11) introduced workspace_id on
+-- the Rust TenantContext struct; this column was missing here, so every
+-- metering event silently dropped workspace attribution when persisted.
+ALTER TABLE tenant_contexts
+    ADD COLUMN IF NOT EXISTS workspace_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_tenant_contexts_org_project
+    ON tenant_contexts(organization_id, project_id);
+
+-- #452 (deferred from #373): the #330 committed-token point-sum
+-- `sum_api_key_committed_tokens` filters this table by `api_key_id`
+-- (JOIN tenant_contexts t ... WHERE t.api_key_id = $1), so this
+-- single-column index (already present since #92 for the Supabase billing
+-- evidence path) lets the planner point-lookup the matching tenant_contexts
+-- rows instead of scanning the table. Kept under its existing name so the
+-- `validate_postgres_schema` index roster stays stable; a separate
+-- idx_tenant_contexts_api_key_id would only duplicate the same column.
+CREATE INDEX IF NOT EXISTS idx_tenant_contexts_api_key
+    ON tenant_contexts(api_key_id);
+
+CREATE TABLE IF NOT EXISTS metering_events (
+    request_id TEXT PRIMARY KEY,
+    tenant_context_id TEXT NOT NULL REFERENCES tenant_contexts(id),
+    trace_id TEXT,
+    agent_run_id TEXT,
+    workflow_id TEXT,
+    workflow_version INTEGER,
+    workflow_node_id TEXT,
+    cluster_id TEXT,
+    node_id TEXT,
+    status_code INTEGER NOT NULL,
+    occurred_at_unix BIGINT NOT NULL
+);
+
+-- P1-4: settled cost and request latency, added alongside usage_monthly_rollups.
+ALTER TABLE metering_events
+    ADD COLUMN IF NOT EXISTS cost_usd DOUBLE PRECISION;
+ALTER TABLE metering_events
+    ADD COLUMN IF NOT EXISTS latency_ms BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_metering_events_tenant_time
+    ON metering_events(tenant_context_id, occurred_at_unix DESC);
+
+CREATE INDEX IF NOT EXISTS idx_metering_events_trace
+    ON metering_events(trace_id);
+
+CREATE TABLE IF NOT EXISTS metering_event_routes (
+    request_id TEXT PRIMARY KEY REFERENCES metering_events(request_id) ON DELETE CASCADE,
+    logical_model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_model TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_metering_event_routes_model_provider
+    ON metering_event_routes(logical_model, provider);
+
+CREATE TABLE IF NOT EXISTS metering_event_usage (
+    request_id TEXT PRIMARY KEY REFERENCES metering_events(request_id) ON DELETE CASCADE,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    usage_source TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS usage_aggregate_rollups (
+    id TEXT PRIMARY KEY,
+    tenant_context_id TEXT NOT NULL REFERENCES tenant_contexts(id),
+    logical_model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_rollups_tenant_model_provider
+    ON usage_aggregate_rollups(tenant_context_id, logical_model, provider);
+
+-- P1-4: per-scope, per-calendar-month cost/usage rollup across the same
+-- tenant/project/workspace/key hierarchy P1-3's quota_policies uses
+-- (scope_type reuses that enum). One row per (period_month, scope_type,
+-- scope_id); incremented on every settled request. This is the read side of
+-- "current month cumulative cost for scope X" for monthly budget
+-- enforcement, and the source for the usage/cost report API.
+CREATE TABLE IF NOT EXISTS usage_monthly_rollups (
+    id TEXT PRIMARY KEY,
+    period_month TEXT NOT NULL,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('tenant', 'project', 'workspace', 'key')),
+    scope_id TEXT NOT NULL,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    request_count BIGINT NOT NULL DEFAULT 0,
+    error_count BIGINT NOT NULL DEFAULT 0,
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (period_month, scope_type, scope_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_monthly_rollups_scope
+    ON usage_monthly_rollups(scope_type, scope_id, period_month);
+
+CREATE INDEX IF NOT EXISTS idx_usage_monthly_rollups_period
+    ON usage_monthly_rollups(period_month);
+
+-- Multi-tenant hierarchy: Tenant -> Project -> Workspace.
+-- Virtual API keys bind to a workspace and resolve upward to project_id and
+-- tenant_id for routing, quota, metering, and audit.
+CREATE TABLE IF NOT EXISTS tenants (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (tenant_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_tenant
+    ON projects(tenant_id);
+
+CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    environment TEXT NOT NULL DEFAULT 'default',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (project_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspaces_project
+    ON workspaces(project_id);
+
+CREATE INDEX IF NOT EXISTS idx_workspaces_tenant
+    ON workspaces(tenant_id);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    key_prefix TEXT NOT NULL,
+    key_hash TEXT NOT NULL,
+    last4 TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    scopes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    rotated_at_unix BIGINT,
+    expires_at_unix BIGINT,
+    revoked_at_unix BIGINT
+);
+
+-- Per-key allow-lists and budget/rate fields, added after the initial
+-- 010_virtual_api_keys migration shipped without them; the Rust
+-- `StoredApiKey` struct always carried these fields, but the Postgres/
+-- Supabase backend silently dropped them on every read-back until now.
+ALTER TABLE api_keys
+    ADD COLUMN IF NOT EXISTS allowed_models_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE api_keys
+    ADD COLUMN IF NOT EXISTS allowed_providers_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE api_keys
+    ADD COLUMN IF NOT EXISTS monthly_token_budget BIGINT;
+ALTER TABLE api_keys
+    ADD COLUMN IF NOT EXISTS request_limit_per_minute BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_workspace
+    ON api_keys(workspace_id);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_tenant_project
+    ON api_keys(tenant_id, project_id);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_prefix
+    ON api_keys(key_prefix);
+
+-- Human admin-console identities (issue #157). Distinct from api_keys, which
+-- model machine/tenant-level gateway access -- admin_users are the people who
+-- sign in to the admin console to manage tenants/workspaces/keys/policies.
+CREATE TABLE IF NOT EXISTS admin_users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    superadmin BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    last_login_at_unix BIGINT,
+    disabled_at_unix BIGINT
+);
+
+-- A user may belong to more than one tenant account, each with its own role.
+CREATE TABLE IF NOT EXISTS admin_user_tenant_memberships (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (user_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_user_tenant_memberships_user
+    ON admin_user_tenant_memberships(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_admin_user_tenant_memberships_tenant
+    ON admin_user_tenant_memberships(tenant_id);
+
+-- Refresh tokens are stored hashed (never plaintext) so a durable-storage
+-- read cannot itself mint a valid session; revocation/rotation just marks a
+-- row instead of deleting it, preserving an audit trail.
+CREATE TABLE IF NOT EXISTS admin_user_refresh_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    -- Tenant + role the session backing this token was issued for (#232).
+    -- Nullable only for legacy rows minted before tenant stamping existed:
+    -- the auth service refuses to refresh a NULL-tenant token (forcing one
+    -- fresh login) rather than guessing which tenant to re-issue for.
+    tenant_id TEXT,
+    role TEXT,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    expires_at_unix BIGINT NOT NULL,
+    revoked_at_unix BIGINT
+);
+
+-- Migration for deployments whose admin_user_refresh_tokens table predates
+-- the tenant/role stamping added by #232. Existing rows stay NULL and are
+-- rejected on refresh (see above), which is the fail-closed option.
+ALTER TABLE admin_user_refresh_tokens
+    ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE admin_user_refresh_tokens
+    ADD COLUMN IF NOT EXISTS role TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_admin_user_refresh_tokens_user
+    ON admin_user_refresh_tokens(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_admin_user_refresh_tokens_hash
+    ON admin_user_refresh_tokens(token_hash);
+
+-- Tenant-scoped revocation path (#232): SCIM deprovision revokes one
+-- (user, tenant) slice of tokens without touching other tenants' sessions.
+CREATE INDEX IF NOT EXISTS idx_admin_user_refresh_tokens_user_tenant
+    ON admin_user_refresh_tokens(user_id, tenant_id);
+
+-- Per-user MCP OAuth material is never stored in plaintext. The gateway
+-- encrypts PKCE verifiers and access/refresh tokens with a deployment key
+-- before calling this repository. Subject and scope columns remain cleartext
+-- so authorization can fail closed without decrypting another user's token.
+CREATE TABLE IF NOT EXISTS mcp_oauth_authorization_states (
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    server_name TEXT NOT NULL,
+    generation BIGINT NOT NULL DEFAULT 1 CHECK (generation > 0),
+    updated_at_unix BIGINT NOT NULL,
+    PRIMARY KEY (tenant_id, workspace_id, user_id, server_name)
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_flows (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    server_name TEXT NOT NULL,
+    pkce_nonce BYTEA NOT NULL,
+    pkce_ciphertext BYTEA NOT NULL,
+    oidc_nonce TEXT NOT NULL,
+    authorization_generation BIGINT NOT NULL CHECK (authorization_generation > 0),
+    created_at_unix BIGINT NOT NULL,
+    expires_at_unix BIGINT NOT NULL,
+    consumed_at_unix BIGINT
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_flows_expiry
+    ON mcp_oauth_flows(expires_at_unix)
+    WHERE consumed_at_unix IS NULL;
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_credentials (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    server_name TEXT NOT NULL,
+    issuer TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    token_type TEXT NOT NULL,
+    scopes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    access_token_nonce BYTEA NOT NULL,
+    access_token_ciphertext BYTEA NOT NULL,
+    refresh_token_nonce BYTEA,
+    refresh_token_ciphertext BYTEA,
+    expires_at_unix BIGINT NOT NULL,
+    key_version BIGINT NOT NULL DEFAULT 1,
+    version BIGINT NOT NULL DEFAULT 1,
+    authorization_generation BIGINT NOT NULL CHECK (authorization_generation > 0),
+    refresh_lease_id TEXT,
+    refresh_lease_expires_at_unix BIGINT,
+    created_at_unix BIGINT NOT NULL,
+    updated_at_unix BIGINT NOT NULL,
+    revoked_at_unix BIGINT,
+    last_refresh_outcome TEXT,
+    last_revocation_outcome TEXT,
+    UNIQUE (tenant_id, workspace_id, user_id, server_name),
+    CHECK ((refresh_token_nonce IS NULL) = (refresh_token_ciphertext IS NULL)),
+    CHECK ((refresh_lease_id IS NULL) = (refresh_lease_expires_at_unix IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_credentials_subject
+    ON mcp_oauth_credentials(tenant_id, workspace_id, user_id, server_name);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_credentials_expiry
+    ON mcp_oauth_credentials(expires_at_unix)
+    WHERE revoked_at_unix IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_mcp_oauth_credentials_refresh_lease
+    ON mcp_oauth_credentials(refresh_lease_expires_at_unix)
+    WHERE refresh_lease_id IS NOT NULL AND revoked_at_unix IS NULL;
+
+ALTER TABLE mcp_oauth_authorization_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mcp_oauth_flows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mcp_oauth_credentials ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS mcp_oauth_authorization_states_tenant_scope
+    ON mcp_oauth_authorization_states;
+CREATE POLICY mcp_oauth_authorization_states_tenant_scope
+    ON mcp_oauth_authorization_states FOR ALL
+    USING (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    )
+    WITH CHECK (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    );
+
+DROP POLICY IF EXISTS mcp_oauth_flows_tenant_scope ON mcp_oauth_flows;
+CREATE POLICY mcp_oauth_flows_tenant_scope ON mcp_oauth_flows FOR ALL
+    USING (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    )
+    WITH CHECK (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    );
+
+DROP POLICY IF EXISTS mcp_oauth_credentials_tenant_scope ON mcp_oauth_credentials;
+CREATE POLICY mcp_oauth_credentials_tenant_scope ON mcp_oauth_credentials FOR ALL
+    USING (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    )
+    WITH CHECK (
+        current_setting('ferrogate.platform_mode', TRUE) = 'on'
+        OR tenant_id = NULLIF(current_setting('ferrogate.tenant_id', TRUE), '')
+    );
+
+-- Quota/rate-limit policy attached to a scope in the tenant -> project ->
+-- workspace -> key hierarchy. Resolution merges key -> workspace -> project
+-- -> tenant: the nearest defined value overrides, but may not exceed the
+-- cap set by an ancestor scope; model_allowlist is the intersection of every
+-- scope in the chain that defines one.
+CREATE TABLE IF NOT EXISTS quota_policies (
+    id TEXT PRIMARY KEY,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('tenant', 'project', 'workspace', 'key')),
+    scope_id TEXT NOT NULL,
+    model_allowlist_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    rpm_limit BIGINT,
+    tpm_limit BIGINT,
+    monthly_budget_usd DOUBLE PRECISION,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (scope_type, scope_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quota_policies_scope
+    ON quota_policies(scope_type, scope_id);
+
+-- Percent-of-monthly_budget_usd tiers (e.g. [75, 90, 95], issue #170) that
+-- each fire a one-time webhook notification strictly before the 100% hard
+-- deny in AppState::monthly_budget_exceeded. Added via ALTER (not the
+-- CREATE TABLE above) so this migration stays idempotent against
+-- already-provisioned quota_policies tables.
+ALTER TABLE quota_policies
+    ADD COLUMN IF NOT EXISTS alert_threshold_pcts_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- Tenant-only override of plans.default_asset_storage_quota_bytes (issue
+-- #188). Stored assets and cumulative usage are tenant-owned, so accepting a
+-- project/workspace/key value would create a write-only control-plane field.
+ALTER TABLE quota_policies
+    ADD COLUMN IF NOT EXISTS asset_storage_quota_bytes BIGINT;
+
+UPDATE quota_policies
+SET asset_storage_quota_bytes = NULL
+WHERE scope_type <> 'tenant' AND asset_storage_quota_bytes IS NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'quota_policies_asset_storage_tenant_only'
+          AND conrelid = 'quota_policies'::regclass
+    ) THEN
+        ALTER TABLE quota_policies
+            ADD CONSTRAINT quota_policies_asset_storage_tenant_only
+            CHECK (asset_storage_quota_bytes IS NULL OR scope_type = 'tenant');
+    END IF;
+END $$;
+
+-- budget_alert_notifications: idempotency ledger for issue #170 -- exactly
+-- one row per (scope, period, tier) means a threshold fires its webhook
+-- once per billing period, not on every subsequent request after crossing
+-- it. The deterministic id (see budget_alert_notification_id in
+-- ferrogate-storage) makes "insert if absent" the natural check.
+CREATE TABLE IF NOT EXISTS budget_alert_notifications (
+    id TEXT PRIMARY KEY,
+    scope_type TEXT NOT NULL CHECK (scope_type IN ('tenant', 'project', 'workspace', 'key')),
+    scope_id TEXT NOT NULL,
+    period_month TEXT NOT NULL,
+    threshold_pct SMALLINT NOT NULL,
+    notified_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (scope_type, scope_id, period_month, threshold_pct)
+);
+
+-- Arbitrary caller-supplied request metadata (issue #171): tags a settled
+-- request beyond the built-in tenant/project/workspace/key scope chain, so
+-- a reseller platform can attribute cost to its own end-customer id,
+-- feature flag, or experiment arm. Bounded at request-ingress time (see
+-- ferrogate_billing::validate_request_metadata), not here.
+ALTER TABLE metering_events
+    ADD COLUMN IF NOT EXISTS metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- usage_metadata_rollups: per-calendar-month usage/cost rollup keyed by an
+-- arbitrary metadata key/value pair (issue #171), aggregated alongside (not
+-- instead of) usage_monthly_rollups. A settled request with N metadata
+-- pairs increments N of these rows -- mirrors how one request fans out
+-- into up to four usage_monthly_rollups rows (one per scope level).
+-- organization_id scopes each rollup to its originating tenant so a tenant
+-- admin sees only its own group_by=metadata breakdown (issue #226). The
+-- deterministic PK `id` encodes (period_month, organization_id, metadata_key,
+-- metadata_value), so it is the dedup key for the upsert -- no separate tuple
+-- UNIQUE constraint is needed (and the pre-#226 one is dropped in the migration
+-- below).
+CREATE TABLE IF NOT EXISTS usage_metadata_rollups (
+    id TEXT PRIMARY KEY,
+    period_month TEXT NOT NULL,
+    organization_id TEXT NOT NULL DEFAULT '',
+    metadata_key TEXT NOT NULL,
+    metadata_value TEXT NOT NULL,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    request_count BIGINT NOT NULL DEFAULT 0,
+    error_count BIGINT NOT NULL DEFAULT 0,
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_metadata_rollups_key
+    ON usage_metadata_rollups(metadata_key, period_month);
+
+-- Migration 033 (#226): add organization_id to existing tables and drop the
+-- pre-#226 (period_month, metadata_key, metadata_value) UNIQUE constraint, which
+-- would otherwise reject two tenants sharing a metadata key/value in the same
+-- month. Idempotent + safe: existing rows default organization_id='' (legacy,
+-- operator-only) and keep their historical totals; the deterministic PK now
+-- dedups on the org-scoped id. Pre-migration rows cannot be re-attributed to a
+-- tenant (their originating tenant is unrecoverable post-aggregation).
+-- NOTE: the ADD COLUMN must precede the idx_usage_metadata_rollups_org_key index
+-- below. On an UPGRADE the table already exists (created pre-#226 without
+-- organization_id), so `CREATE TABLE IF NOT EXISTS` above is a no-op and the
+-- org-scoped index can only be built once this ALTER has added the column.
+ALTER TABLE usage_metadata_rollups
+    ADD COLUMN IF NOT EXISTS organization_id TEXT NOT NULL DEFAULT '';
+
+-- Per-tenant lookup index for the scoped group_by=metadata read path (#226).
+-- Placed AFTER the ADD COLUMN so the upgrade path (table missing the column)
+-- does not fail building an index over a not-yet-existent column.
+CREATE INDEX IF NOT EXISTS idx_usage_metadata_rollups_org_key
+    ON usage_metadata_rollups(organization_id, metadata_key, period_month);
+
+DO $$
+DECLARE
+    constraint_name TEXT;
+BEGIN
+    SELECT conname INTO constraint_name
+    FROM pg_constraint
+    WHERE conrelid = 'usage_metadata_rollups'::regclass
+      AND contype = 'u'
+      AND pg_get_constraintdef(oid) = 'UNIQUE (period_month, metadata_key, metadata_value)';
+    IF constraint_name IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE usage_metadata_rollups DROP CONSTRAINT %I', constraint_name);
+    END IF;
+END $$;
+
+-- plans: sellable subscription tiers (issue #168). A named bundle of feature
+-- flags plus default quota values that seed the effective-quota merge chain
+-- as its floor, below any explicit scope-level quota_policies row. Shared
+-- across tenants, like quota_policies is shared across scopes.
+CREATE TABLE IF NOT EXISTS plans (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    mcp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    self_hosted_workers_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    admin_console_seats BIGINT,
+    default_model_allowlist_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    default_rpm_limit BIGINT,
+    default_tpm_limit BIGINT,
+    default_monthly_budget_usd DOUBLE PRECISION,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+-- Gates /v1/assets/* (issue #176/#177) the same way mcp_enabled gates MCP
+-- tool governance. Added via ALTER rather than the CREATE TABLE above so
+-- this migration file stays idempotent against already-provisioned plans
+-- tables (mirrors the tenants.plan_id ALTER pattern just below).
+ALTER TABLE plans
+    ADD COLUMN IF NOT EXISTS asset_hosting_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE plans
+    ADD COLUMN IF NOT EXISTS default_asset_storage_quota_bytes BIGINT;
+
+-- Gates Extension-backend /v1/tools/execute (issue #183) the same way
+-- mcp_enabled gates the Mcp backend at the same endpoint family -- closes
+-- a gap where a plan disabling mcp_enabled had no equivalent protection
+-- against identical tool-execution traffic routed through the Extension
+-- backend instead.
+ALTER TABLE plans
+    ADD COLUMN IF NOT EXISTS extension_tools_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Every tenant lands on this plan unless explicitly assigned another one --
+-- seeded before the `tenants.plan_id` foreign key below is added, since that
+-- column's default value must reference a row that already exists.
+INSERT INTO plans (id, name, slug, mcp_enabled, self_hosted_workers_enabled, admin_console_seats)
+VALUES ('free', 'Free', 'free', FALSE, FALSE, 1)
+ON CONFLICT (id) DO NOTHING;
+
+-- Unlike mcp_enabled/self_hosted_workers_enabled (left FALSE above), a small
+-- free asset-hosting quota is a deliberate self-serve growth lever (issue
+-- #176/#177), matching the in-memory default_free_plan(). A separate UPDATE
+-- (rather than folding into the INSERT) so re-running this migration also
+-- backfills the value onto a 'free' row created before these columns
+-- existed -- the ADD COLUMN default above would otherwise leave it FALSE.
+UPDATE plans
+    SET asset_hosting_enabled = TRUE, default_asset_storage_quota_bytes = 10485760
+    WHERE id = 'free';
+
+ALTER TABLE tenants
+    ADD COLUMN IF NOT EXISTS plan_id TEXT NOT NULL DEFAULT 'free' REFERENCES plans(id);
+
+-- wallets: prepaid-credit balance for self-serve billing (issue #169),
+-- distinct from and enforced independently of quota_policies'
+-- monthly_budget_usd (that only throttles spend against a number nobody
+-- ever paid). A tenant's wallet is opt-in -- no row means no
+-- wallet-balance enforcement applies, same pattern as plans' feature
+-- flags (issue #182/#183). balance_credits is an integer (matching
+-- ferrogate_billing::pricing::DEFAULT_CREDITS_PER_USD's unit), not
+-- floating-point USD, so repeated debits never accumulate rounding drift.
+CREATE TABLE IF NOT EXISTS wallets (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+    balance_credits BIGINT NOT NULL DEFAULT 0,
+    auto_recharge_threshold_credits BIGINT,
+    auto_recharge_amount_credits BIGINT,
+    dunning BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+-- One durable row per provider-attempt wallet settlement. Claiming this id
+-- and changing the balance happen in one transaction, so replay and
+-- concurrent delivery return the first outcome instead of debiting twice.
+CREATE TABLE IF NOT EXISTS wallet_settlements (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    delta_credits BIGINT NOT NULL,
+    balance_after_credits BIGINT,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_settlements_tenant_time
+    ON wallet_settlements(tenant_id, created_at_unix DESC);
+
+-- payment_methods: opaque references to payment-provider-side payment
+-- methods (issue #169), e.g. a Stripe payment_method/customer id pair.
+-- Never stores raw card data -- that stays entirely on the payment
+-- provider's side.
+CREATE TABLE IF NOT EXISTS payment_methods (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    provider_customer_id TEXT NOT NULL,
+    provider_payment_method_id TEXT NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_methods_tenant
+    ON payment_methods(tenant_id);
+
+-- stored_assets: tenant-scoped static asset storage (issue #176), the
+-- foundation of the unified agent-asset hosting epic (#175) -- CLI tool
+-- packages, MCP connection manifests, Skill bundles, static sites, and
+-- config files all share this one table instead of being special-cased.
+--
+-- `content` stores file bytes inline (BYTEA, which Postgres TOASTs/
+-- compresses transparently above ~2KB) rather than referencing a separate
+-- object-storage bucket, so every asset operation is a single Postgres/
+-- Supabase round trip with no external bucket credentials required. The
+-- `size_bytes` check constraint caps a single asset at 10 MiB as a hard
+-- backstop until a real object-storage backend replaces inline BYTEA for
+-- larger files.
+--
+-- Isolation is enforced at the application layer via `tenant_id` (same
+-- model as every other multi-tenant table in this schema -- tenants,
+-- projects, workspaces, quota_policies, plans -- none of which use
+-- Postgres RLS today, since FerroGate connects as one shared service role
+-- rather than issuing per-tenant JWTs that `auth.uid()`-style RLS expects).
+-- Genuine RLS/S3-scoped-credential isolation is tracked as a follow-up in
+-- issue #179 once this moves to real Supabase Storage buckets.
+CREATE TABLE IF NOT EXISTS stored_assets (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    project_id TEXT,
+    asset_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0 AND size_bytes <= 10485760),
+    content BYTEA NOT NULL,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (tenant_id, asset_type, name, version)
+);
+
+-- Composite index: leftmost prefix (tenant_id, tenant_id+asset_type) covers
+-- both "list everything for a tenant" and "list one asset_type for a
+-- tenant", and the full column set covers the ORDER BY name, version list
+-- query without a separate sort step.
+CREATE INDEX IF NOT EXISTS idx_stored_assets_tenant_type_name
+    ON stored_assets(tenant_id, asset_type, name, version);
+
+-- Bucket-backed storage (issue #176): when set, this asset's real bytes
+-- live in an S3-compatible bucket at this object key instead of `content`
+-- (which is an empty bytea for these rows) -- see
+-- crates/ferrogate-cli/src/gateway/asset_bucket.rs. NULL (the default)
+-- means `content` holds the real bytes, the original inline-only design.
+ALTER TABLE stored_assets
+    ADD COLUMN IF NOT EXISTS storage_uri TEXT;
+
+-- permissions / roles / tenant_role_bindings: tenant-level entitlement
+-- system (issue #182). A permission is a dynamically-definable,
+-- finest-grained capability unit (string-keyed, e.g. "assets.host") --
+-- creating a new one is a plain INSERT, not a migration. A role is a
+-- named, horizontally-extensible bundle of permission keys (JSONB array,
+-- same pattern as plans.default_model_allowlist_json). A tenant may hold
+-- multiple roles (tenant_role_bindings is many-to-many); its effective
+-- permission set is the union of every bound role's permission_keys.
+-- Granting a tenant a new capability becomes "bind a role" -- one write --
+-- instead of adding a new plans.* boolean column + migration.
+--
+-- Isolation note: like every other multi-tenant table in this schema
+-- (tenants, projects, workspaces, quota_policies, plans, stored_assets),
+-- there is no Postgres RLS here -- FerroGate enforces tenant scoping at
+-- the application layer since it connects as one shared service role, not
+-- per-tenant JWTs.
+CREATE TABLE IF NOT EXISTS permissions (
+    id TEXT PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE TABLE IF NOT EXISTS roles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    permission_keys_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE TABLE IF NOT EXISTS tenant_role_bindings (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    role_id TEXT NOT NULL REFERENCES roles(id),
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    UNIQUE (tenant_id, role_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_role_bindings_tenant
+    ON tenant_role_bindings(tenant_id);
+
+-- No seed data here deliberately: unlike `plans` (which needs a 'free' row
+-- to exist before ALTER TABLE tenants can default plan_id to it),
+-- permissions/roles have no bootstrap dependency, and issue #182's own
+-- closed-loop E2E test (tests/rbac_api.rs) creates its own permission/role
+-- through the admin API -- a stronger proof of "no code change required"
+-- than a SQL fixture would be.
+
+-- billing_ledger: the settled money/credit flow produced by the standalone
+-- billing microservice (issue #129). Each row is one priced charge derived
+-- from a single usage event. `entry_json` carries the full LedgerEntry for
+-- fidelity; the flattened numeric columns exist for aggregation/reporting.
+-- Append-only and idempotent on `id` (the request/trace-derived key) so a
+-- retried charge never double-bills.
+CREATE TABLE IF NOT EXISTS billing_ledger (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    trace_id TEXT,
+    organization_id TEXT,
+    project_id TEXT,
+    workspace_id TEXT,
+    api_key_id TEXT,
+    logical_model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_model TEXT NOT NULL,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    usage_source TEXT NOT NULL DEFAULT 'provider_usage',
+    status_code INTEGER NOT NULL DEFAULT 0,
+    input_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+    output_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+    total_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    credits DOUBLE PRECISION NOT NULL DEFAULT 0,
+    entry_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    occurred_at_unix BIGINT,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+CREATE INDEX IF NOT EXISTS idx_billing_ledger_tenant_time
+    ON billing_ledger(organization_id, project_id, occurred_at_unix);
+
+CREATE INDEX IF NOT EXISTS idx_billing_ledger_model_provider
+    ON billing_ledger(provider, provider_model);
+
+-- billing_report_outbox: durable delivery queue for gateway -> billing service
+-- usage reports (issue #137). Every settled request is enqueued here in the
+-- same path that persists the metering event; a background sweeper drains it,
+-- POSTs each event to the billing service (idempotent on the ledger entry id),
+-- and deletes the row on success — so a charge survives a billing outage or a
+-- gateway restart rather than being lost by a fire-and-forget POST. `id` is the
+-- ledger entry id so re-enqueue is naturally idempotent.
+CREATE TABLE IF NOT EXISTS billing_report_outbox (
+    id TEXT PRIMARY KEY,
+    event_json JSONB NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_unix BIGINT NOT NULL,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+-- dead_lettered_at_unix (issue #143): a permanently-failing delivery (e.g. the
+-- billing service's rate card has no rule for the event's model, a 4xx that
+-- can never succeed on retry) is marked here after MAX_BILLING_OUTBOX_ATTEMPTS
+-- instead of being rescheduled forever. The row is kept (not deleted) for
+-- operator inspection via the dead-letter admin API, and excluded from
+-- `list_due_billing_reports` so it stops consuming sweeper batch capacity.
+ALTER TABLE billing_report_outbox
+    ADD COLUMN IF NOT EXISTS dead_lettered_at_unix BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_billing_report_outbox_due
+    ON billing_report_outbox(next_attempt_unix);
+
+CREATE INDEX IF NOT EXISTS idx_billing_report_outbox_dead_lettered
+    ON billing_report_outbox(dead_lettered_at_unix)
+    WHERE dead_lettered_at_unix IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS storage_schema_migrations (
+    version BIGINT PRIMARY KEY,
+    name TEXT NOT NULL,
+    checksum TEXT NOT NULL DEFAULT '',
+    applied_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+ALTER TABLE storage_schema_migrations
+    ADD COLUMN IF NOT EXISTS checksum TEXT NOT NULL DEFAULT '';
+
+-- Issue #213: one logical request can produce multiple billable provider
+-- attempts through retry/fallback. Run the PK/FK rewrite exactly once; normal
+-- startup schema validation must not repeatedly take destructive DDL locks.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (30, '030_provider_attempt_settlement_identity')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE metering_events
+            ADD COLUMN IF NOT EXISTS billing_event_id TEXT;
+        ALTER TABLE metering_events
+            ADD COLUMN IF NOT EXISTS provider_attempt_id TEXT NOT NULL DEFAULT '';
+        ALTER TABLE metering_events
+            ADD COLUMN IF NOT EXISTS provider_attempt_index INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE metering_events
+            ADD COLUMN IF NOT EXISTS event_json JSONB;
+        UPDATE metering_events
+        SET billing_event_id = request_id
+        WHERE billing_event_id IS NULL;
+        ALTER TABLE metering_events
+            ALTER COLUMN billing_event_id SET NOT NULL;
+
+        ALTER TABLE metering_event_routes
+            ADD COLUMN IF NOT EXISTS billing_event_id TEXT;
+        UPDATE metering_event_routes
+        SET billing_event_id = request_id
+        WHERE billing_event_id IS NULL;
+        ALTER TABLE metering_event_routes
+            ALTER COLUMN billing_event_id SET NOT NULL;
+
+        ALTER TABLE metering_event_usage
+            ADD COLUMN IF NOT EXISTS billing_event_id TEXT;
+        UPDATE metering_event_usage
+        SET billing_event_id = request_id
+        WHERE billing_event_id IS NULL;
+        ALTER TABLE metering_event_usage
+            ALTER COLUMN billing_event_id SET NOT NULL;
+
+        -- Persist the complete immutable settlement payload. Idempotency is
+        -- exact: the same provider_attempt_id may only replay byte-equivalent
+        -- domain data, never rewrite correlation, timing, usage, or money.
+        UPDATE metering_events AS e
+        SET event_json = jsonb_build_object(
+            'request_id', e.request_id,
+            'trace_id', e.trace_id,
+            'provider_attempt_id', e.provider_attempt_id,
+            'provider_attempt_index', e.provider_attempt_index,
+            'agent_run_id', e.agent_run_id,
+            'workflow_id', e.workflow_id,
+            'workflow_version', e.workflow_version,
+            'workflow_node_id', e.workflow_node_id,
+            'cluster_id', e.cluster_id,
+            'node_id', e.node_id,
+            'tenant', jsonb_build_object(
+                'organization_id', t.organization_id,
+                'team_id', t.team_id,
+                'project_id', t.project_id,
+                'workspace_id', t.workspace_id,
+                'user_id', t.user_id,
+                'api_key_id', t.api_key_id
+            ),
+            'logical_model', r.logical_model,
+            'provider', r.provider,
+            'provider_model', COALESCE(r.provider_model, ''),
+            'usage', jsonb_build_object(
+                'prompt_tokens', u.prompt_tokens,
+                'completion_tokens', u.completion_tokens,
+                'total_tokens', u.total_tokens
+            ),
+            'usage_source', u.usage_source,
+            'status_code', e.status_code,
+            'occurred_at_unix', e.occurred_at_unix,
+            'cost_usd', e.cost_usd,
+            'latency_ms', e.latency_ms,
+            'metadata', e.metadata_json
+        )
+        FROM tenant_contexts AS t,
+             metering_event_routes AS r,
+             metering_event_usage AS u
+        WHERE e.tenant_context_id = t.id
+          AND r.request_id = e.request_id
+          AND u.request_id = e.request_id
+          AND e.event_json IS NULL;
+        ALTER TABLE metering_events
+            ALTER COLUMN event_json SET NOT NULL;
+
+        ALTER TABLE metering_event_routes
+            DROP CONSTRAINT IF EXISTS metering_event_routes_request_id_fkey,
+            DROP CONSTRAINT IF EXISTS metering_event_routes_billing_event_id_fkey,
+            DROP CONSTRAINT IF EXISTS metering_event_routes_pkey;
+        ALTER TABLE metering_event_usage
+            DROP CONSTRAINT IF EXISTS metering_event_usage_request_id_fkey,
+            DROP CONSTRAINT IF EXISTS metering_event_usage_billing_event_id_fkey,
+            DROP CONSTRAINT IF EXISTS metering_event_usage_pkey;
+        ALTER TABLE metering_events
+            DROP CONSTRAINT IF EXISTS metering_events_pkey;
+        ALTER TABLE metering_events
+            ADD CONSTRAINT metering_events_pkey PRIMARY KEY (billing_event_id);
+        ALTER TABLE metering_event_routes
+            ADD CONSTRAINT metering_event_routes_pkey PRIMARY KEY (billing_event_id),
+            ADD CONSTRAINT metering_event_routes_billing_event_id_fkey
+                FOREIGN KEY (billing_event_id)
+                REFERENCES metering_events(billing_event_id) ON DELETE CASCADE;
+        ALTER TABLE metering_event_usage
+            ADD CONSTRAINT metering_event_usage_pkey PRIMARY KEY (billing_event_id),
+            ADD CONSTRAINT metering_event_usage_billing_event_id_fkey
+                FOREIGN KEY (billing_event_id)
+                REFERENCES metering_events(billing_event_id) ON DELETE CASCADE;
+
+        ALTER TABLE billing_ledger
+            ADD COLUMN IF NOT EXISTS provider_attempt_id TEXT NOT NULL DEFAULT '';
+        ALTER TABLE billing_ledger
+            ADD COLUMN IF NOT EXISTS provider_attempt_index INTEGER NOT NULL DEFAULT 0;
+
+        CREATE INDEX IF NOT EXISTS idx_metering_events_request
+            ON metering_events(request_id, provider_attempt_index);
+        CREATE INDEX IF NOT EXISTS idx_billing_ledger_request_attempt
+            ON billing_ledger(request_id, provider_attempt_index);
+    END IF;
+END
+$$;
+
+-- Issue #217: revoke consumes every pending flow for one tenant/workspace/user/server
+-- identity. Keep that bounded lookup index partial so completed flows do not bloat it.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (31, '031_mcp_pending_flow_lookup_index')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        CREATE INDEX IF NOT EXISTS idx_mcp_oauth_flows_pending_subject
+            ON mcp_oauth_flows(tenant_id, workspace_id, user_id, server_name)
+            WHERE consumed_at_unix IS NULL;
+    END IF;
+END
+$$;
+
+-- Issue #220: Guardrail binding writers coordinate with one indexed optimistic
+-- generation predicate. The database never owns retry, backoff, or wait loops.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (32, '032_guardrail_policy_binding_generation')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE guardrail_policy_bindings
+            ADD COLUMN IF NOT EXISTS generation BIGINT NOT NULL DEFAULT 0;
+        ALTER TABLE guardrail_policy_bindings
+            DROP CONSTRAINT IF EXISTS guardrail_policy_bindings_generation_check;
+        ALTER TABLE guardrail_policy_bindings
+            ADD CONSTRAINT guardrail_policy_bindings_generation_check
+            CHECK (generation >= 0);
+    END IF;
+END
+$$;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (1, '001_init_postgres')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (2, '002_supabase_control_plane_billing_evidence')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (3, '003_supabase_structured_metering_usage')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (4, '004_supabase_managed_worker_lifecycle')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (5, '005_supabase_self_hosted_worker_lifecycle')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (6, '006_self_hosted_worker_identity_expiry')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (7, '007_self_hosted_run_dispatch_state')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (8, '008_managed_worker_isolation_evidence')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (9, '009_multi_tenant_hierarchy')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (10, '010_virtual_api_keys')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (11, '011_quota_policies')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (12, '012_usage_cost_accounting')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (13, '013_billing_ledger')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (14, '014_billing_report_outbox')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (15, '015_billing_report_outbox_dead_letter')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (16, '016_admin_console_users')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (17, '017_plans')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (18, '018_stored_assets')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (19, '019_rbac_tenant_entitlements')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (20, '020_budget_alert_notifications')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (21, '021_usage_metadata_rollups')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (22, '022_plans_extension_tools_enabled')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (23, '023_wallets_and_payment_methods')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (24, '024_stored_assets_storage_uri')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (25, '025_quota_policies_asset_storage_quota_bytes')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (26, '026_guardrail_policy_revisions')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (27, '027_guardrail_evaluation_evidence')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (28, '028_mcp_per_user_oauth_identity')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (29, '029_tenant_only_asset_storage_quota')
+ON CONFLICT (version) DO UPDATE
+SET name = EXCLUDED.name;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (30, '030_provider_attempt_settlement_identity')
+ON CONFLICT (version) DO NOTHING;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (31, '031_mcp_pending_flow_lookup_index')
+ON CONFLICT (version) DO NOTHING;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (32, '032_guardrail_policy_binding_generation')
+ON CONFLICT (version) DO NOTHING;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (33, '033_usage_metadata_rollups_per_tenant')
+ON CONFLICT (version) DO NOTHING;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (34, '034_admin_refresh_token_tenant_scope')
+ON CONFLICT (version) DO NOTHING;
+
+-- #206: durable replay floor for signed control-plane snapshots. Persists the
+-- highest accepted snapshot revision per (tenant, deployment) identity so a
+-- process restart cannot be used to replay an authentically-signed OLDER
+-- snapshot (bounded rollback). Writers only ever raise the floor (GREATEST
+-- upsert in the storage layer).
+CREATE TABLE IF NOT EXISTS control_plane_replay_floors (
+    tenant_id TEXT NOT NULL,
+    deployment_id TEXT NOT NULL,
+    last_accepted_revision BIGINT NOT NULL,
+    updated_at_unix BIGINT NOT NULL,
+    PRIMARY KEY (tenant_id, deployment_id)
+);
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (35, '035_agent_run_audit_index')
+ON CONFLICT (version) DO NOTHING;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (36, '036_control_plane_replay_floors')
+ON CONFLICT (version) DO NOTHING;
+
+-- #246: time-based agent schedule triggers. `agent_schedules` holds the
+-- control-plane schedule DEFINITIONS (cron/interval + firing target); the
+-- scheduler tick loop enqueues a dispatch into the EXISTING self-hosted lease
+-- queue (`self_hosted_run_dispatches`) or creates an agent run when a schedule
+-- is due -- it does NOT reimplement a second task-state machine. Firing is
+-- at-most-once per (schedule, slot): the `agent_schedule_fires` UNIQUE
+-- (schedule_id, scheduled_fire_at_unix) row is the correctness gate, so a lost
+-- multi-instance race can never double-trigger the same slot even if two
+-- gateways evaluate the same due schedule concurrently.
+CREATE TABLE IF NOT EXISTS agent_schedules (
+    schedule_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    -- 'cron' | 'interval'
+    spec_kind TEXT NOT NULL,
+    cron_expr TEXT,
+    -- IANA timezone name (e.g. 'UTC', 'America/New_York'); cron only.
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    interval_secs BIGINT,
+    -- 'self_hosted_dispatch' | 'agent_run'
+    target_kind TEXT NOT NULL,
+    -- Agent/workflow ref, framework_adapter, required capabilities, input
+    -- payload template -- interpreted by the fire action.
+    target_json JSONB NOT NULL DEFAULT '{}'::JSONB,
+    -- 'skip' | 'allow'
+    overlap_policy TEXT NOT NULL DEFAULT 'skip',
+    -- 'skip_missed' | 'fire_once'
+    catchup_policy TEXT NOT NULL DEFAULT 'skip_missed',
+    jitter_secs BIGINT NOT NULL DEFAULT 0,
+    next_fire_at_unix BIGINT,
+    last_fire_at_unix BIGINT,
+    created_at_unix BIGINT NOT NULL,
+    updated_at_unix BIGINT NOT NULL,
+    revision BIGINT NOT NULL DEFAULT 1
+);
+
+-- Due-schedule scan: enabled rows whose next_fire_at has arrived, cheapest
+-- first. Partial index keeps the hot path off disabled/unscheduled rows.
+CREATE INDEX IF NOT EXISTS idx_agent_schedules_due
+    ON agent_schedules(next_fire_at_unix ASC)
+    WHERE enabled AND next_fire_at_unix IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_agent_schedules_tenant
+    ON agent_schedules(tenant_id, workspace_id, name);
+
+-- Durable fire history + idempotency ledger. One row per (schedule, slot); the
+-- UNIQUE constraint + ON CONFLICT DO NOTHING makes a slot fire at most once
+-- across every gateway instance racing the same database.
+CREATE TABLE IF NOT EXISTS agent_schedule_fires (
+    fire_id TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL REFERENCES agent_schedules(schedule_id) ON DELETE CASCADE,
+    scheduled_fire_at_unix BIGINT NOT NULL,
+    fired_at_unix BIGINT NOT NULL,
+    node_id TEXT,
+    -- 'dispatched' | 'skipped_overlap' | 'skipped_disabled' | 'error'
+    outcome TEXT NOT NULL,
+    dispatch_id TEXT,
+    run_id TEXT,
+    detail TEXT,
+    UNIQUE (schedule_id, scheduled_fire_at_unix)
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_schedule_fires_history
+    ON agent_schedule_fires(schedule_id, scheduled_fire_at_unix DESC);
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (37, '037_agent_schedules')
+ON CONFLICT (version) DO NOTHING;
+
+-- Issue #260: artifact-registry semantics for hosted assets. Adds
+-- platform/arch variants (`variant`) and cargo-style `yank` to stored_assets,
+-- widens the logical-version uniqueness to include the variant so one
+-- `{name}/{version}` can carry several per-triple artifacts, and introduces
+-- `asset_channels` (mutable `latest`/`stable`/`canary` + free-form tag
+-- pointers) resolved to a concrete version at pull time. Gated so the
+-- destructive UNIQUE-constraint swap runs exactly once.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (38, '038_asset_registry_semantics')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE stored_assets
+            ADD COLUMN IF NOT EXISTS variant TEXT NOT NULL DEFAULT '';
+        ALTER TABLE stored_assets
+            ADD COLUMN IF NOT EXISTS yanked BOOLEAN NOT NULL DEFAULT FALSE;
+        -- The logical version is now unique per platform/arch variant, not per
+        -- bare version. Swap the auto-named pre-#260 constraint for the wider
+        -- one. This ADD CONSTRAINT runs after the ADD COLUMN above (see #254:
+        -- an index/constraint over a migration-added column must follow the
+        -- ADD COLUMN in the same gated block).
+        ALTER TABLE stored_assets
+            DROP CONSTRAINT IF EXISTS stored_assets_tenant_id_asset_type_name_version_key;
+        ALTER TABLE stored_assets
+            ADD CONSTRAINT stored_assets_tenant_type_name_version_variant_key
+            UNIQUE (tenant_id, asset_type, name, version, variant);
+
+        CREATE TABLE IF NOT EXISTS asset_channels (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            asset_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            version TEXT NOT NULL,
+            updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+            UNIQUE (tenant_id, asset_type, name, channel)
+        );
+        CREATE INDEX IF NOT EXISTS idx_asset_channels_lookup
+            ON asset_channels(tenant_id, asset_type, name);
+    END IF;
+END
+$$;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (38, '038_asset_registry_semantics')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 039 (#262): asset egress (download bandwidth) governance. Adds a
+-- monthly egress byte budget + per-minute download RPM cap to both the
+-- per-scope quota_policies and the tenant-wide plans defaults, mirroring the
+-- existing monthly_budget_usd / rpm_limit dimensions. Unlike
+-- asset_storage_quota_bytes, egress governance is NOT tenant-only: a
+-- workspace/key may carry a tighter egress cap that resolve_effective_quota
+-- folds `min`-across-the-chain, so no scope-restriction CHECK is added. Added
+-- via ALTER ... ADD COLUMN IF NOT EXISTS so the migration stays idempotent
+-- against already-provisioned tables; no index is added (lookups are by the
+-- already-indexed (scope_type, scope_id)).
+ALTER TABLE quota_policies
+    ADD COLUMN IF NOT EXISTS monthly_egress_bytes_budget BIGINT;
+ALTER TABLE quota_policies
+    ADD COLUMN IF NOT EXISTS download_rpm_limit BIGINT;
+
+ALTER TABLE plans
+    ADD COLUMN IF NOT EXISTS default_monthly_egress_bytes_budget BIGINT;
+ALTER TABLE plans
+    ADD COLUMN IF NOT EXISTS default_download_rpm_limit BIGINT;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (39, '039_asset_egress_quota')
+ON CONFLICT (version) DO NOTHING;
+
+-- #281: durable wallet reserve/hold primitive for exact-amount, irreversible
+-- spends (x402/AP2 prerequisite, parent #268). `adjust_wallet_balance` is
+-- check-then-debit with no hold, so N concurrent spends can each pass the same
+-- balance read and overdraw a prepaid balance. A reservation row holds an
+-- exact credit amount against a wallet and reduces its AVAILABLE (not actual)
+-- balance until it is either settled (converted to a real debit ledger entry)
+-- or released (cancelled). Reserves serialize on the owning `wallets` row
+-- (SELECT ... FOR UPDATE in the storage layer), so N parallel reserves against
+-- a balance that only affords N-1 of them let exactly N-1 through -- no
+-- oversell. `status` is 'active' | 'settled' | 'released'. An expired 'active'
+-- hold no longer counts against available balance (the `expires_at_unix` guard
+-- in the reserve query) and is swept to 'released' by the billing-outbox-style
+-- sweeper, so a crash between reserve and settle self-heals; a settle after
+-- expiry/release is rejected, keeping the spend exact and idempotent.
+CREATE TABLE IF NOT EXISTS wallet_reservations (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    amount_credits BIGINT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    expires_at_unix BIGINT NOT NULL,
+    -- Set to the wallet_settlements.id produced when this hold settles, so the
+    -- ledger charge and its originating hold reference each other. The
+    -- settlement id IS the reservation id -- a 1:1, exact-amount mapping, which
+    -- also makes settle idempotent through the wallet_settlements primary key.
+    settlement_id TEXT,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+-- Migration 041 (#283): durable per-tenant SSO configuration + restart-safe
+-- pending-flow state. Before this, per-tenant OIDC config lived only in the
+-- auth service's process memory (lost on restart, unmanageable per tenant at
+-- runtime) and there was no SAML. `sso_provider_configs` holds one config per
+-- tenant for EITHER OIDC or SAML (`provider_kind`); OIDC client secrets are
+-- NEVER stored in plaintext -- only a `secret_ref` URI resolved through
+-- ferrogate-secrets at flow time is persisted. `sso_pending_flows` makes the
+-- short-lived authorize->callback round trip survive a restart (and lets a
+-- multi-instance deployment complete a flow on a different instance than the
+-- one that started it). No index is added over a migration-added column, so
+-- the #254 ordering rule is trivially satisfied.
+CREATE TABLE IF NOT EXISTS sso_provider_configs (
+    tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+    provider_kind TEXT NOT NULL CHECK (provider_kind IN ('oidc', 'saml')),
+    default_role TEXT NOT NULL DEFAULT 'member',
+    group_role_mapping_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- OIDC (Authorization Code + PKCE). `oidc_client_secret_ref` is a
+    -- ferrogate-secrets URI (env://... / vault://...), never a plaintext
+    -- secret.
+    oidc_issuer TEXT,
+    oidc_client_id TEXT,
+    oidc_client_secret_ref TEXT,
+    oidc_redirect_uri TEXT,
+    oidc_group_claim TEXT NOT NULL DEFAULT 'groups',
+    -- SAML 2.0 SP (HTTP-Redirect binding, query-string signature verified
+    -- against the IdP's X.509 certificate).
+    saml_idp_entity_id TEXT,
+    saml_idp_sso_url TEXT,
+    saml_idp_certificate TEXT,
+    saml_sp_entity_id TEXT,
+    saml_acs_url TEXT,
+    saml_email_attribute TEXT,
+    saml_name_attribute TEXT,
+    saml_groups_attribute TEXT,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+-- Available-balance computation and the admin per-tenant hold listing both
+-- filter by (tenant_id, status).
+CREATE INDEX IF NOT EXISTS idx_wallet_reservations_tenant_status
+    ON wallet_reservations(tenant_id, status);
+
+-- Sweeper scans active holds whose TTL has passed; the partial index keeps it
+-- off already-settled/released rows.
+CREATE INDEX IF NOT EXISTS idx_wallet_reservations_active_expiry
+    ON wallet_reservations(expires_at_unix)
+    WHERE status = 'active';
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (40, '040_wallet_reservations')
+ON CONFLICT (version) DO NOTHING;
+
+-- Short-lived (default 10 min) state for an in-flight SSO authorize->callback
+-- round trip, keyed by the opaque `state`/RelayState token. Made durable
+-- (#283) so a restart mid-login, or a callback that lands on a different
+-- gateway instance, still completes. Entries are consumed (deleted) on first
+-- use and pruned once expired.
+CREATE TABLE IF NOT EXISTS sso_pending_flows (
+    state TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    provider_kind TEXT NOT NULL,
+    -- OIDC PKCE code_verifier (null for SAML).
+    code_verifier TEXT,
+    -- SAML AuthnRequest ID we generated, echoed back as InResponseTo (null for
+    -- OIDC).
+    request_id TEXT,
+    created_at_unix BIGINT NOT NULL,
+    expires_at_unix BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sso_pending_flows_expiry
+    ON sso_pending_flows(expires_at_unix);
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (41, '041_tenant_sso_config')
+ON CONFLICT (version) DO NOTHING;
+
+-- #279: workflow-graph-level execution budgets for multi-step agent runs.
+-- Per-request quota/limits (quota_policies, workflow max_tool_calls) govern one
+-- HTTP request only; a multi-step agent run (a workflow graph identified by
+-- workflow_id@version + run_id) had no cumulative envelope spanning every step's
+-- provider calls + tool executions. `workflow_run_budgets` is the durable, per-
+-- run ledger: an envelope (cost credits / tokens / tool-call count / wall-clock
+-- deadline) is reserved once at run start and each step debits against it. A
+-- debit that would breach ANY capped dimension is rejected fail-closed WITHOUT
+-- applying the spend, and flips `status` to 'exhausted' so subsequent steps are
+-- denied immediately; a top-up raises the caps and flips it back to 'active'
+-- (the resumable-after-top-up path). Debits serialize on the row (SELECT ...
+-- FOR UPDATE in the storage layer), so N concurrent steps against a tool-call
+-- budget of K let exactly K through -- no overspend, the same no-oversell
+-- property #281's wallet reservations provide. A NULL cap means that dimension
+-- is unbounded; spent_* columns accumulate monotonically per dimension.
+CREATE TABLE IF NOT EXISTS workflow_run_budgets (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    workflow_version BIGINT NOT NULL,
+    run_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    cost_budget_credits BIGINT,
+    token_budget BIGINT,
+    tool_call_budget BIGINT,
+    wall_clock_deadline_unix BIGINT,
+    spent_credits BIGINT NOT NULL DEFAULT 0,
+    spent_tokens BIGINT NOT NULL DEFAULT 0,
+    spent_tool_calls BIGINT NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+-- The admin per-tenant budget listing filters by tenant_id; the run lookup
+-- (open/debit/topup) is by the primary key, so no separate run_id index.
+CREATE INDEX IF NOT EXISTS idx_workflow_run_budgets_tenant
+    ON workflow_run_budgets(tenant_id);
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (42, '042_workflow_run_budgets')
+ON CONFLICT (version) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Migration 043 (#263): asset lifecycle -- version retention policies + GC.
+-- `retention_policies` is deliberately NOT hard-coded to assets: it is the
+-- generalizable retention-rule shape the epic (#175 follow-on) wants to reuse
+-- for request_logs/audit_events/metering TTL later (all unbounded today). A row
+-- expresses "for `resource_type` under `scope`, keep the newest `keep_last_n`
+-- and/or anything younger than `max_age_secs`; never touch anything younger
+-- than `min_age_secs` (the safety grace window)". For assets, `resource_type` is
+-- 'asset' and `scope` is either '*' (the tenant/plan default) or an exact
+-- '{asset_type}/{name}'. The pruning engine (see ferrogate-storage
+-- asset_lifecycle.rs) additionally never prunes a channel-pinned version, and
+-- the unreferenced-blob GC only deletes a bucket object no stored_assets row
+-- points at, after the grace window -- fail-safe: on any doubt, KEEP.
+CREATE TABLE IF NOT EXISTS retention_policies (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT '*',
+    keep_last_n BIGINT,
+    max_age_secs BIGINT,
+    min_age_secs BIGINT NOT NULL DEFAULT 0,
+    created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+    updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+);
+
+-- The lifecycle sweeper resolves policies per tenant + resource_type, so the
+-- listing index matches that access path.
+CREATE INDEX IF NOT EXISTS idx_retention_policies_tenant_resource
+    ON retention_policies(tenant_id, resource_type);
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (43, '043_retention_policies')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 44 (#265): custom-domain bindings for hosted static sites. A row
+-- maps one exact hostname (normalized lowercase, no port) to the
+-- `{tenant}/{site}` a `Host: <hostname>` request should serve through the
+-- existing `/sites/{tenant}/{site}/{path...}` resolution (#258). The hostname
+-- is the primary key: a hostname can point at exactly one site, while a site
+-- may be reachable through several hostnames. Binding/unbinding is an audited
+-- admin action; TLS for bound hostnames rides the existing ACME issuance +
+-- graceful-upgrade reload (no separate PKI path).
+CREATE TABLE IF NOT EXISTS site_domains (
+    hostname TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    site TEXT NOT NULL,
+    created_at_unix BIGINT NOT NULL,
+    updated_at_unix BIGINT NOT NULL
+);
+
+-- Admin listings resolve per tenant; serve-path lookups hit the PK directly.
+CREATE INDEX IF NOT EXISTS idx_site_domains_tenant
+    ON site_domains(tenant_id);
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (44, '044_site_domains')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 45 (#304): persist the action identity on timeline/audit rows so
+-- CapabilityAuthorizationEvidence is no longer dropped at the persistence
+-- boundary. Additive, nullable projection columns (pre-migration rows and
+-- non-governed paths stay NULL):
+--   * action_fingerprint  -- target-level fingerprint under the
+--     canonical_target_sha256 contract ("sha256:<hex>", see
+--     ferrogate_runtime::ACTION_FINGERPRINT_CONTRACT). NOT the
+--     invocation-level tool-approval fingerprint.
+--   * decision            -- canonical decision class from issue #303's
+--     ActionDecision: 'allow' | 'deny' | 'ask' | 'degrade'.
+--   * decision_reason     -- stable DecisionReason code, e.g.
+--     'capability_allowed', 'audit_redacted', 'guardrail:fail:block:enforced'.
+--   * output_disposition  -- what happened to the action's output:
+--     'returned' | 'redacted' | 'withheld' | 'errored'.
+-- The compact split (class + reason code as separate TEXT columns rather than
+-- one serialized ActionDecision JSON) keeps SQL filtering trivial
+-- (WHERE decision = 'deny') while remaining lossless via the reason code.
+ALTER TABLE agent_run_events
+    ADD COLUMN IF NOT EXISTS action_fingerprint TEXT,
+    ADD COLUMN IF NOT EXISTS decision TEXT,
+    ADD COLUMN IF NOT EXISTS decision_reason TEXT,
+    ADD COLUMN IF NOT EXISTS output_disposition TEXT;
+
+ALTER TABLE audit_events
+    ADD COLUMN IF NOT EXISTS action_fingerprint TEXT,
+    ADD COLUMN IF NOT EXISTS decision TEXT,
+    ADD COLUMN IF NOT EXISTS decision_reason TEXT,
+    ADD COLUMN IF NOT EXISTS output_disposition TEXT;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (45, '045_action_identity')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 46 (#305): correlation keys on the self-hosted dispatch queue so a
+-- dispatch lease joins timeline (agent_run_events), audit (audit_events),
+-- approval, guardrail and billing evidence on the same
+-- {request_id, trace_id, agent_run_id} triple. Additive, nullable projection
+-- columns (pre-migration rows and dispatches created outside any inbound
+-- request -- e.g. a background scheduler tick -- stay NULL; nothing is
+-- fabricated):
+--   * request_id   -- id of the request that triggered the dispatch (e.g. the
+--     admin schedules run-now trigger).
+--   * trace_id     -- W3C trace id of that request, when it carried one.
+--   * agent_run_id -- the agent run this dispatch starts/controls (normally
+--     equal to run_id, carried explicitly so evidence joins are uniform).
+ALTER TABLE self_hosted_run_dispatches
+    ADD COLUMN IF NOT EXISTS request_id TEXT,
+    ADD COLUMN IF NOT EXISTS trace_id TEXT,
+    ADD COLUMN IF NOT EXISTS agent_run_id TEXT;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (46, '046_dispatch_correlation')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 47 (#306): shared action identity + stored canonical decisions on
+-- guardrail evidence, completing the #303/#304 adoption for the
+-- guardrail_evaluations table. Additive, nullable projection columns
+-- (pre-migration rows and evaluations without a resolvable canonical
+-- capability target -- e.g. model-content evaluations and Extension/Builtin
+-- Tool-class actions -- stay NULL; nothing is fabricated):
+--   * action_fingerprint -- target-level fingerprint under the
+--     canonical_target_sha256 contract ("sha256:<hex>",
+--     ferrogate_runtime::ACTION_FINGERPRINT_CONTRACT). The SAME value the
+--     #304 timeline/audit rows carry for the same action, so one action joins
+--     guardrail evidence + approvals + timeline + audit by fingerprint. NOT
+--     the guardrail HMAC input_fingerprint (content identity, unchanged) and
+--     NOT the invocation-level tool-approval fingerprint.
+--   * decision          -- canonical decision class STORED AT WRITE TIME via
+--     the #303 GuardrailOutcome mapping over the recorded
+--     verdict/action/enforcement_status triple:
+--     'allow' | 'deny' | 'ask' | 'degrade'.
+--   * decision_reason   -- the lossless #303 reason code
+--     'guardrail:<verdict>:<action>:<enforcement_status>'.
+-- Investigations read the STORED decision for new rows; the read-side
+-- heuristic over verdict/action/enforcement remains only for legacy rows.
+ALTER TABLE guardrail_evaluations
+    ADD COLUMN IF NOT EXISTS action_fingerprint TEXT,
+    ADD COLUMN IF NOT EXISTS decision TEXT,
+    ADD COLUMN IF NOT EXISTS decision_reason TEXT;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (47, '047_guardrail_action_identity')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 48 (#307): downstream handoff parent identity — a dispatched
+-- worker run created as a downstream effect of a governed action records
+-- WHICH upstream action caused it, so the chain "governed action -> child
+-- dispatch" is reconstructable. Additive, nullable projection column
+-- (pre-migration rows and dispatches created outside any governed-action
+-- context — registry seed, scheduler tick, admin run-now — stay NULL;
+-- nothing is fabricated):
+--   * parent_action_fingerprint -- the PARENT governed action's target-level
+--     fingerprint under the canonical_target_sha256 contract
+--     ("sha256:<hex>", ferrogate_runtime::ACTION_FINGERPRINT_CONTRACT), i.e.
+--     the same value the parent's #304 timeline/audit and #306
+--     guardrail/approval rows carry — NOT this dispatch's own identity.
+-- The A2A leg of #307 needs no column: child A2A exchange rows persist the
+-- declared parent inside the request_logs.request_json / audit_events
+-- .audit_json documents their read paths already deserialize.
+ALTER TABLE self_hosted_run_dispatches
+    ADD COLUMN IF NOT EXISTS parent_action_fingerprint TEXT;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (48, '048_handoff_parent_identity')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 49 (#329): stamp the self-hosted-worker leg with the shared action
+-- identity. A self-hosted worker that executes a leased run now reports its
+-- evidence carrying the dispatch lease's correlation keys, so worker-reported
+-- telemetry (`self_hosted_worker_telemetry_events`) joins the #199
+-- investigation view + #306/#307 `action_correlations` on the SAME
+-- {request_id, trace_id, agent_run_id} triple (#305) + `parent_action_fingerprint`
+-- (#307) the control plane persisted on `self_hosted_run_dispatches`, instead of
+-- relying on a gateway-side back-fill from the run. Additive, nullable
+-- projection columns — pre-migration rows and evidence from a keyless dispatch
+-- (report-only run, background scheduler tick) stay NULL; nothing is fabricated:
+--   * request_id / trace_id / agent_run_id -- the dispatching context's
+--     correlation triple the worker received on the lease and stamped on the
+--     reported evidence (matches the #305 dispatch/timeline/audit columns).
+--   * parent_action_fingerprint -- the UPSTREAM governed action's target-level
+--     fingerprint under the canonical_target_sha256 contract ("sha256:<hex>",
+--     ferrogate_runtime::ACTION_FINGERPRINT_CONTRACT), the same value the #307
+--     dispatch row carries — validated before persist so a malformed
+--     worker-supplied value cannot pollute the fingerprint join space.
+ALTER TABLE self_hosted_worker_telemetry_events
+    ADD COLUMN IF NOT EXISTS request_id TEXT,
+    ADD COLUMN IF NOT EXISTS trace_id TEXT,
+    ADD COLUMN IF NOT EXISTS agent_run_id TEXT,
+    ADD COLUMN IF NOT EXISTS parent_action_fingerprint TEXT;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (49, '049_self_hosted_worker_evidence_correlation')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 50 (#338): the original stored-assets constraint predates the
+-- presigned bucket path and capped every row at the inline 10 MiB ceiling.
+-- Bucket-backed objects bypass the gateway body buffer and use their own
+-- configured per-object limit, so only inline BYTEA rows retain this database
+-- backstop. Keep the stable constraint name so schema validation and incident
+-- inspection can identify the exact invariant. The insert-first/IF FOUND gate
+-- is concurrency-safe and transactional: only the startup that records the
+-- migration performs the table scan, and a failed ALTER rolls the ledger row
+-- back so the next startup can retry.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (50, '050_bucket_backed_asset_size_constraint')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE stored_assets
+            DROP CONSTRAINT IF EXISTS stored_assets_size_bytes_check;
+        ALTER TABLE stored_assets
+            ADD CONSTRAINT stored_assets_size_bytes_check
+            CHECK (size_bytes >= 0 AND (storage_uri IS NOT NULL OR size_bytes <= 10485760));
+    END IF;
+END
+$$;
+
+-- Migration 51 (#366): durable trust-screening visibility state on every
+-- stored asset. Before #366 the presigned commit path ran only size/SHA-256 +
+-- built-in content validation, bypassing the signature/approval/scanner
+-- screening the inline path applied, and a `pending_scan`/`quarantined` verdict
+-- had nowhere durable to live -- so the download path could not withhold an
+-- unproven object. This column is the persisted half of that fix: both the
+-- inline and the presigned publish path now write the screening verdict here,
+-- and every read/resolution/download surface serves a row only when it is
+-- 'visible'. Added NOT NULL DEFAULT 'visible' so pre-#366 rows (only ever
+-- admitted after passing the screening that existed at push time) stay
+-- downloadable, while every new withheld row is explicit. Idempotent
+-- ADD COLUMN IF NOT EXISTS; no index (visibility is filtered in-process over
+-- the already tenant-indexed row set, never as a standalone lookup key).
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (51, '051_asset_screening_visibility')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE stored_assets
+            ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'visible';
+    END IF;
+END
+$$;
+
+INSERT INTO storage_schema_migrations (version, name)
+VALUES (51, '051_asset_screening_visibility')
+ON CONFLICT (version) DO NOTHING;
+
+-- Migration 52 (#352): durable x402 payment attempts and their wallet coupling.
+-- A wallet hold alone cannot explain or reconcile an on-chain payment, so every
+-- attempt gets a durable identity carrying the complete immutable audit tuple
+-- (the frozen #350 wire contract fields plus the #351 policy decision output)
+-- and an explicit state machine. State moves through
+--   challenged -> authorized -> submitted -> settled
+-- with terminal denied/released/failed and non-terminal outcome_unknown; every
+-- transition is one short conditional CAS gated on the current state (see
+-- crates/ferrogate-storage/src/payment_attempt.rs). `generation` is the
+-- per-attempt operation token that survives the async storage scheduler so a
+-- stale reread across a timeout is never mistaken for a failed transition.
+--
+-- `hold_id` couples the attempt to its wallet reservation (#281,
+-- wallet_reservations.id); crossing into settled captures that hold, while
+-- released/failed/denied release it and outcome_unknown RETAINS it. No FK is
+-- placed on hold_id because a denied attempt legitimately has none and the
+-- linkage is resolved in-process; ownership is enforced by tenant_id on every
+-- read. Atomic amounts are TEXT (canonical decimal) so the on-chain u64 range
+-- survives a BIGINT that only spans i64; credits_amount stays BIGINT to match
+-- the wallet-credit domain. The insert-first/IF FOUND gate keeps the one-time
+-- DDL off the repeated startup schema-validation path.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (52, '052_x402_payment_attempts')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        CREATE TABLE IF NOT EXISTS payment_attempts (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            project_id TEXT,
+            workspace_id TEXT,
+            run_id TEXT,
+            worker_id TEXT,
+            request_id TEXT,
+            trace_id TEXT,
+            method TEXT NOT NULL,
+            resource_url TEXT NOT NULL,
+            request_body_hash TEXT,
+            challenge_hash TEXT NOT NULL,
+            x402_version BIGINT NOT NULL,
+            scheme TEXT NOT NULL,
+            network_caip2 TEXT NOT NULL,
+            mint TEXT NOT NULL,
+            atomic_amount TEXT NOT NULL,
+            recipient TEXT NOT NULL,
+            credits_amount BIGINT,
+            conversion_version TEXT,
+            policy_revision BIGINT NOT NULL,
+            decision TEXT NOT NULL,
+            reason_code TEXT NOT NULL,
+            hold_id TEXT,
+            state TEXT NOT NULL CHECK (state IN (
+                'challenged', 'authorized', 'submitted', 'settled',
+                'denied', 'released', 'failed', 'outcome_unknown'
+            )),
+            generation BIGINT NOT NULL DEFAULT 0,
+            submitted_at_unix BIGINT,
+            transaction_signature TEXT,
+            settled_atomic_amount TEXT,
+            settlement_response TEXT,
+            failure_code TEXT,
+            created_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT),
+            updated_at_unix BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+        );
+        -- Tenant-scoped, newest-first admin listing without a separate sort step.
+        CREATE INDEX IF NOT EXISTS idx_payment_attempts_tenant_time
+            ON payment_attempts(tenant_id, created_at_unix DESC);
+        -- Resolve an attempt from its linked hold (reconciliation/inspection).
+        CREATE INDEX IF NOT EXISTS idx_payment_attempts_hold
+            ON payment_attempts(hold_id) WHERE hold_id IS NOT NULL;
+    END IF;
+END
+$$;
+
+-- Migration 53 (#357): durable, coalesced observed-agent presence. The
+-- observed-agent-activity surface reports unattributed virtual-API-key traffic
+-- as tenant-scoped "Unknown" activity and decides running vs inactive from a
+-- recency window. Deriving that recency by scanning request_logs alone is
+-- fragile: request_logs are retention-bounded (#284) and a scan is O(rows). This
+-- table backs the recency signal with ONE durable row per (tenant_id,
+-- api_key_id) whose last_seen is bumped by a single conditional upsert on the
+-- primary key (INSERT ... ON CONFLICT DO UPDATE SET last_seen = GREATEST(...),
+-- request_count = request_count + 1). GREATEST/LEAST keep last/first-seen
+-- monotonic so a delayed touch can never regress the row, and the coalescing
+-- keeps a per-key burst to a single-row hot write with no table growth.
+-- Attribution (which keys surface as Unknown) and token/cost evidence still come
+-- from the request-log/billing correlation in ferrogate-cli; this store only
+-- refines recency. The insert-first/IF FOUND gate keeps the one-time DDL off the
+-- repeated startup schema-validation path (mirrors migration 52).
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (53, '053_observed_agent_presence')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        CREATE TABLE IF NOT EXISTS observed_agent_presence (
+            tenant_id TEXT NOT NULL,
+            api_key_id TEXT NOT NULL,
+            first_seen_at_unix BIGINT NOT NULL,
+            last_seen_at_unix BIGINT NOT NULL,
+            request_count BIGINT NOT NULL DEFAULT 0,
+            updated_at_unix BIGINT NOT NULL,
+            PRIMARY KEY (tenant_id, api_key_id)
+        );
+        -- Tenant-scoped window read (recent presence, newest first) served
+        -- straight from the index; also the target of the coalescing upsert.
+        CREATE INDEX IF NOT EXISTS idx_observed_agent_presence_tenant_last_seen
+            ON observed_agent_presence(tenant_id, last_seen_at_unix DESC);
+        -- Platform-operator cross-tenant window read.
+        CREATE INDEX IF NOT EXISTS idx_observed_agent_presence_last_seen
+            ON observed_agent_presence(last_seen_at_unix DESC);
+    END IF;
+END
+$$;
+
+-- Migration 54 (#354): partial index backing the on-chain settlement
+-- reconciler's due-query. The reconciler drives post-submission attempts still
+-- in a non-terminal 'submitted'/'outcome_unknown' state toward a definite
+-- terminal (settled/failed) from on-chain evidence, or re-parks them
+-- outcome_unknown with bounded backoff. Its bounded batch read is
+--   WHERE state IN ('submitted','outcome_unknown') AND updated_at_unix <= $2
+--   ORDER BY updated_at_unix ASC LIMIT $3
+-- so a PARTIAL index over exactly those two in-flight states, keyed by the
+-- updated_at_unix re-check cursor, serves both the predicate and the ordering
+-- without a full-table scan or a separate sort. The partial WHERE keeps the
+-- index tiny -- terminal attempts (the overwhelming majority over time) are
+-- never indexed. Kept SEPARATE from idx_payment_attempts_tenant_time (admin
+-- listing) and idx_payment_attempts_hold (hold linkage); this one exists solely
+-- for the reconciler. A new migration (not folded into 52) so deployments that
+-- already applied 52 pick the index up.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (54, '054_x402_reconcile_index')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        CREATE INDEX IF NOT EXISTS idx_payment_attempts_reconcile
+            ON payment_attempts(updated_at_unix)
+            WHERE state IN ('submitted', 'outcome_unknown');
+    END IF;
+END
+$$;
+
+-- Migration 55 (#259): a DEDICATED per-object asset byte ceiling, independent
+-- of the cumulative asset_storage_quota_bytes. quota_policies gets a tenant-only
+-- override column (mirroring asset_storage_quota_bytes: assets and their usage
+-- are tenant-owned, so a project/workspace/key value would be write-only), and
+-- plans gets the tenant-wide default the effective-quota merge falls back to.
+-- Each individual asset object must be <= this; it does NOT bound cumulative
+-- storage. Added via the insert-first/IF FOUND gate so only the startup that
+-- records the migration runs the DDL, and a failed ALTER rolls the ledger row
+-- back for a clean retry. Idempotent ADD COLUMN IF NOT EXISTS; the tenant-only
+-- CHECK mirrors quota_policies_asset_storage_tenant_only.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (55, '055_asset_max_object_bytes')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE quota_policies
+            ADD COLUMN IF NOT EXISTS asset_max_object_bytes BIGINT;
+        ALTER TABLE quota_policies
+            ADD CONSTRAINT quota_policies_asset_max_object_tenant_only
+            CHECK (asset_max_object_bytes IS NULL OR scope_type = 'tenant');
+        ALTER TABLE plans
+            ADD COLUMN IF NOT EXISTS default_asset_max_object_bytes BIGINT;
+    END IF;
+END
+$$;
+
+-- Migration 56 (#428): durable per-agent cost-burn accumulation. One row per
+-- (tenant_id, agent_key, period) whose accumulated_usd total is bumped by the
+-- single atomic `INSERT ... ON CONFLICT (tenant_id, agent_key, period) DO UPDATE
+-- SET accumulated_usd = agent_cost_burn.accumulated_usd + EXCLUDED.accumulated_usd
+-- ... RETURNING accumulated_usd` upsert, so a per-agent budget survives a restart
+-- and concurrent adds for one key can never lose an increment. accumulated_usd
+-- reuses the crate DOUBLE PRECISION monetary type (cost_usd/monthly_budget_usd).
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (56, '056_agent_cost_burn')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        CREATE TABLE IF NOT EXISTS agent_cost_burn (
+            tenant_id TEXT NOT NULL,
+            agent_key TEXT NOT NULL,
+            period TEXT NOT NULL,
+            accumulated_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+            first_seen_unix BIGINT NOT NULL,
+            updated_at_unix BIGINT NOT NULL,
+            PRIMARY KEY (tenant_id, agent_key, period)
+        );
+    END IF;
+END
+$$;
+
+-- Migration 57 (#428): a per-tenant monthly USD ceiling on CF-hosted-agent
+-- runtime cost, the per-tenant source a later connector resolves into the
+-- slice-A AgentBudgetPolicy ceiling. quota_policies gets a per-scope column and
+-- plans gets the tenant-wide default the effective-quota merge falls back to.
+-- This is MONEY, so it mirrors monthly_budget_usd exactly: DOUBLE PRECISION,
+-- settable at ANY scope and merged min-across-the-chain -- NOT tenant-only like
+-- the asset byte ceilings, so it carries NO tenant-only CHECK. Added via the
+-- insert-first/IF FOUND gate so only the startup that records the migration
+-- runs the DDL, and a failed ALTER rolls the ledger row back for a clean retry.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (57, '057_agent_cost_budget_usd')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE quota_policies
+            ADD COLUMN IF NOT EXISTS agent_cost_budget_usd DOUBLE PRECISION;
+        ALTER TABLE plans
+            ADD COLUMN IF NOT EXISTS default_agent_cost_budget_usd DOUBLE PRECISION;
+    END IF;
+END
+$$;
+
+-- Migration 58 (#488): DNS-TXT ownership proof for custom site domains. A
+-- `site_domains` row records INTENT ("this tenant asked for this hostname");
+-- before this migration nothing recorded EVIDENCE that the tenant controls the
+-- hostname, so any tenant could land-grab an unbound FQDN it did not own and
+-- push it into the ACME order set. One row per (tenant_id, hostname) carries
+-- the explicit state machine (pending_verification -> verified -> expired, plus
+-- the one-time `grandfathered` migration state) and the per-(tenant, hostname)
+-- challenge token whose digest the operator publishes as TXT at
+-- `_ferrogate-challenge.<hostname>`. Keyed on (tenant_id, hostname) and NOT on
+-- hostname alone so (a) a challenge one tenant started can never be redeemed by
+-- another, and (b) several tenants may hold a PENDING challenge for one
+-- hostname, which is what stops a squatter's unverified binding from blocking
+-- the tenant that actually owns the domain. Added via the insert-first/IF FOUND
+-- gate so only the startup that records the migration runs the DDL.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (58, '058_site_domain_verifications')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        CREATE TABLE IF NOT EXISTS site_domain_verifications (
+            tenant_id TEXT NOT NULL,
+            hostname TEXT NOT NULL,
+            site TEXT NOT NULL,
+            state TEXT NOT NULL,
+            challenge_token TEXT NOT NULL,
+            issued_at_unix BIGINT NOT NULL,
+            token_expires_at_unix BIGINT NOT NULL,
+            verified_at_unix BIGINT,
+            verification_expires_at_unix BIGINT,
+            last_checked_at_unix BIGINT,
+            last_failure_reason TEXT,
+            attempt_count BIGINT NOT NULL DEFAULT 0,
+            updated_at_unix BIGINT NOT NULL,
+            PRIMARY KEY (tenant_id, hostname)
+        );
+    END IF;
+END
+$$;
+
+-- Migration 59 (#352 review §4/§5): give the payment-attempt money columns a
+-- DOMAIN, and make an on-chain transaction signature single-use.
+--
+-- §4. `atomic_amount`/`settled_atomic_amount` are TEXT for a good reason -- an
+-- on-chain u64 exceeds BIGINT's i64 range -- but TEXT with no CHECK accepted
+-- '', '-5' and '1e9' into the durable audit record, and neither create path
+-- validated them (both validated only `state`). `evidence_conflict` then
+-- compares those values as opaque strings and the reconciler parses them
+-- downstream, so a non-numeric amount is a money bug waiting on a parse.
+-- `^[0-9]{1,20}$` is exactly the canonical decimal u64 shape the wire contract
+-- emits (20 digits covers u64::MAX = 18446744073709551615); it forbids leading
+-- signs, exponents, whitespace and the empty string. `credits_amount` is the
+-- internal wallet-credit hold size and a hold is never negative.
+--
+-- §5. Two distinct attempts could record the SAME transaction_signature -- one
+-- stablecoin transfer used as proof to capture two wallet holds. The existing
+-- fail-closed contract only promises conflict detection under the same
+-- idempotency id, so this was a gap in the contract rather than a violation of
+-- it; a partial UNIQUE index closes it AT THE DATABASE, which is the only place
+-- two concurrent settles can be serialized. NULL is not indexed, so the many
+-- unsettled attempts are unaffected.
+--
+-- Added via the insert-first/IF FOUND gate so only the startup that records the
+-- migration runs the DDL, and a failed statement rolls the ledger row back for a
+-- clean retry. The CHECKs are NOT VALID-free (the table is young and the
+-- application already refuses these values as of this change), so an existing
+-- row violating them fails the migration loudly rather than being silently
+-- grandfathered into the audit record.
+--
+-- The same upgrade story applies to the UNIQUE INDEX, and it is worth stating
+-- rather than leaving implied (#352 review §3): pre-existing rows sharing a
+-- transaction_signature make `CREATE UNIQUE INDEX` fail, which fails this DO
+-- block, which -- with POSTGRES_SCHEMA_VERSION now at 59 -- means the gateway
+-- refuses to start. That is the intended outcome, not an oversight. Two attempts
+-- holding one signature IS the double-capture this migration exists to prevent,
+-- and it is unresolvable by machine: only an operator can say which attempt the
+-- transfer actually paid for, and silently indexing around it (a NOT VALID-style
+-- grandfather, or a non-unique index) would leave a live double-capture in the
+-- audit record while reporting a clean upgrade. Recovery is deliberate and
+-- manual -- reconcile the duplicates on-chain, correct the losing attempt, then
+-- restart. The duplicate set is one query:
+--   SELECT transaction_signature, array_agg(id) FROM payment_attempts
+--    WHERE transaction_signature IS NOT NULL
+--    GROUP BY transaction_signature HAVING count(*) > 1;
+-- In practice the table is young and every writer has always set
+-- hold_id = attempt_id, so duplicates are not expected; "not expected" is not
+-- "handled", which is why the failure mode is written down here.
+DO $$
+BEGIN
+    INSERT INTO storage_schema_migrations (version, name)
+    VALUES (59, '059_payment_attempt_amount_domains')
+    ON CONFLICT (version) DO NOTHING;
+    IF FOUND THEN
+        ALTER TABLE payment_attempts
+            ADD CONSTRAINT payment_attempts_atomic_amount_canonical
+            CHECK (atomic_amount ~ '^[0-9]{1,20}$');
+        ALTER TABLE payment_attempts
+            ADD CONSTRAINT payment_attempts_settled_amount_canonical
+            CHECK (settled_atomic_amount IS NULL
+                   OR settled_atomic_amount ~ '^[0-9]{1,20}$');
+        ALTER TABLE payment_attempts
+            ADD CONSTRAINT payment_attempts_credits_amount_non_negative
+            CHECK (credits_amount IS NULL OR credits_amount >= 0);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_attempts_transaction_signature
+            ON payment_attempts(transaction_signature)
+            WHERE transaction_signature IS NOT NULL;
+    END IF;
+END
+$$;
