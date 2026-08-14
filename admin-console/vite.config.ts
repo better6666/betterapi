@@ -5,10 +5,12 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  const basePath = env.VITE_BASE_PATH ?? "/";
   const controlPlaneProxyTarget = env.VITE_CONTROL_PLANE_PROXY_TARGET ?? "http://127.0.0.1:8787";
   const gatewayProxyTarget = env.VITE_GATEWAY_PROXY_TARGET ?? "http://127.0.0.1:8788";
 
   return {
+    base: basePath,
     plugins: [react()],
     build: {
       manifest: true,

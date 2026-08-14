@@ -75,7 +75,7 @@ function App() {
     <AppThemeProvider>
       <I18nProvider>
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
+          <BrowserRouter basename={import.meta.env.BASE_URL}>
             <AuthProvider>
               <CatalogScopeProvider>
                 <Routes>

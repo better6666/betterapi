@@ -425,10 +425,12 @@ const session: StoredSession = {
   refreshToken: "e2e-refresh-token",
   expiresAt: Date.now() + 60 * 60 * 1000,
   gatewayApiKey: "e2e-gateway-key",
+  platformOperatorApiKey: null,
   user: {
     id: "user-e2e",
     email: "operator@example.com",
     display_name: "E2E Operator",
+    superadmin: false,
   },
   tenant: {
     id: "tenant-e2e",
