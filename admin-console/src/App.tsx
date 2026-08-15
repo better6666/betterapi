@@ -14,6 +14,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 const LoginPage = lazy(() => import("@/pages/login"));
 const RegisterPage = lazy(() => import("@/pages/register"));
+const WelcomePage = lazy(() => import("@/pages/welcome"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const AssetsPage = lazy(() => import("@/pages/assets"));
 const WithheldAssetsPage = lazy(() => import("@/pages/withheld-assets"));
@@ -218,8 +219,8 @@ function App() {
                       ))}
                     </Route>
                   </Route>
-                  <Route path="/" element={<Navigate to="/app" replace />} />
-                  <Route path="*" element={<Navigate to="/app" replace />} />
+                  <Route path="/" element={routeElement(WelcomePage)} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </CatalogScopeProvider>
             </AuthProvider>
