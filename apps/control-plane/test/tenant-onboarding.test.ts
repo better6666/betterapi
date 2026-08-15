@@ -298,6 +298,23 @@ describe("POST /v1/admin/register (console self-service)", () => {
     expect(await listTenantModelCatalog(handle.db, tenantId)).toHaveLength(
       DEFAULT_TENANT_MODEL_CATALOG.length,
     );
+
+    // A newly registered tenant must receive the separate MCP execution
+    // entitlement in the SAME durable tenant storage the MCP Worker reads.
+    const defaultRole = await handle.db
+      .prepare(
+        "SELECT permission_keys_json FROM tenant_role_catalog WHERE role_id = ?",
+      )
+      .bind("platform-default-mcp-executor")
+      .first<{ permission_keys_json: string }>();
+    expect(defaultRole).not.toBeNull();
+    expect(JSON.parse(defaultRole?.permission_keys_json ?? "[]")).toEqual(["mcp.execute"]);
+
+    const defaultBinding = await handle.db
+      .prepare("SELECT role_id FROM tenant_role_bindings WHERE tenant_id = ? AND role_id = ?")
+      .bind(tenantId, "platform-default-mcp-executor")
+      .first<{ role_id: string }>();
+    expect(defaultBinding?.role_id).toBe("platform-default-mcp-executor");
   });
 });
 

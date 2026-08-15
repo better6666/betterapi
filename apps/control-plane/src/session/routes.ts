@@ -51,13 +51,19 @@ import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { adminCrossSiteRejection, isStateChangingMethod } from "../middleware/auth.js";
 import { HttpError } from "../middleware/errors.js";
-import type { ControlPlaneDeps, ControlPlaneEnv, StoreRecord } from "../ports.js";
+import {
+  type ControlPlaneDeps,
+  type ControlPlaneEnv,
+  type StoreRecord,
+  StoreConflictError,
+} from "../ports.js";
 import {
   PROJECTS_COLLECTION,
   TENANT_ACCOUNTS_COLLECTION,
   WORKSPACES_COLLECTION,
 } from "../store/lifecycle.js";
 import { projectTenantAccount } from "../store/quota_registry.js";
+import { projectRole, projectTenantRoleBinding } from "../store/rbac_registry.js";
 import { provisionTenantStorageFor } from "../store/tenant_storage.js";
 import {
   generateRefreshTokenSecret,
@@ -94,6 +100,75 @@ import {
 } from "./tokens.js";
 
 type Ctx = Context<ControlPlaneEnv>;
+
+/**
+ * The non-editable platform role every self-service tenant receives. It grants
+ * only the separate MCP entitlement checked after a virtual key's API scopes;
+ * it deliberately grants no control-plane authoring or model permissions.
+ */
+const DEFAULT_MCP_EXECUTION_ROLE_ID = "platform-default-mcp-executor";
+const ROLES_COLLECTION = "roles";
+const TENANT_ROLES_COLLECTION = "tenant-roles";
+
+/**
+ * Provision the minimum durable RBAC grant a new tenant needs for its own
+ * allowlisted MCP tools. API-key scopes alone are intentionally insufficient:
+ * apps/mcp also requires a tenant role carrying `mcp.execute`.
+ *
+ * The tenant storage must already exist before this runs because the projection
+ * writes the tenant's role catalogue and binding through the privileged object
+ * RPC. The global role creation is race-safe: concurrent first registrations
+ * converge on the same immutable role document and typed row.
+ */
+async function provisionDefaultMcpExecutionGrant(
+  deps: ControlPlaneDeps,
+  tenantId: string,
+  now: number,
+): Promise<void> {
+  const controlDb = deps.controlDatabase;
+  if (controlDb === null) return;
+
+  let role = await deps.store.get(ROLES_COLLECTION, PLATFORM, DEFAULT_MCP_EXECUTION_ROLE_ID);
+  if (role === null) {
+    try {
+      role = await deps.store.create(ROLES_COLLECTION, PLATFORM, {
+        id: DEFAULT_MCP_EXECUTION_ROLE_ID,
+        name: "Default MCP execution",
+        description: "Allows a self-service tenant to execute its allowlisted MCP tools.",
+        permissions: ["mcp.execute"],
+        tenant_id: null,
+        created_at: now,
+        updated_at: now,
+      } satisfies StoreRecord);
+    } catch (error) {
+      if (!(error instanceof StoreConflictError)) throw error;
+      role = await deps.store.get(ROLES_COLLECTION, PLATFORM, DEFAULT_MCP_EXECUTION_ROLE_ID);
+      if (role === null) throw error;
+    }
+  }
+  await projectRole(controlDb, role, now);
+
+  const bindingId = `${tenantId}:${DEFAULT_MCP_EXECUTION_ROLE_ID}`;
+  if ((await deps.store.get(TENANT_ROLES_COLLECTION, PLATFORM, bindingId)) === null) {
+    try {
+      await deps.store.create(TENANT_ROLES_COLLECTION, PLATFORM, {
+        id: bindingId,
+        tenant_id: tenantId,
+        role_id: DEFAULT_MCP_EXECUTION_ROLE_ID,
+        created_at: now,
+      } satisfies StoreRecord);
+    } catch (error) {
+      if (!(error instanceof StoreConflictError)) throw error;
+    }
+  }
+  await projectTenantRoleBinding(
+    controlDb,
+    deps.tenantDatabases,
+    tenantId,
+    DEFAULT_MCP_EXECUTION_ROLE_ID,
+    now,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -412,6 +487,7 @@ async function handleRegister(c: Ctx): Promise<Response> {
     created_at: now,
     updated_at: now,
   } satisfies StoreRecord);
+  await provisionDefaultMcpExecutionGrant(console_.deps, tenantId, now);
 
   await console_.store.upsertUser({
     id: userId,
