@@ -63,7 +63,11 @@ import {
   WORKSPACES_COLLECTION,
 } from "../store/lifecycle.js";
 import { projectTenantAccount } from "../store/quota_registry.js";
-import { projectRole, projectTenantRoleBinding } from "../store/rbac_registry.js";
+import {
+  projectPermission,
+  projectRole,
+  projectTenantRoleBinding,
+} from "../store/rbac_registry.js";
 import { provisionTenantStorageFor } from "../store/tenant_storage.js";
 import {
   generateRefreshTokenSecret,
@@ -107,6 +111,8 @@ type Ctx = Context<ControlPlaneEnv>;
  * it deliberately grants no control-plane authoring or model permissions.
  */
 const DEFAULT_MCP_EXECUTION_ROLE_ID = "platform-default-mcp-executor";
+const MCP_EXECUTE_PERMISSION_ID = "platform-mcp-execute";
+const PERMISSIONS_COLLECTION = "permissions";
 const ROLES_COLLECTION = "roles";
 const TENANT_ROLES_COLLECTION = "tenant-roles";
 
@@ -127,6 +133,30 @@ async function provisionDefaultMcpExecutionGrant(
 ): Promise<void> {
   const controlDb = deps.controlDatabase;
   if (controlDb === null) return;
+
+  // MCP's entitlement ladder deliberately refuses an undeclared permission even
+  // when a role lists its key. Seed the operator-owned catalogue entry before
+  // projecting the role, otherwise the binding remains fail-closed in production.
+  let permission = await deps.store.get(PERMISSIONS_COLLECTION, PLATFORM, MCP_EXECUTE_PERMISSION_ID);
+  if (permission === null) {
+    try {
+      permission = await deps.store.create(PERMISSIONS_COLLECTION, PLATFORM, {
+        id: MCP_EXECUTE_PERMISSION_ID,
+        key: "mcp.execute",
+        action: "mcp.execute",
+        name: "MCP execution",
+        description: "Allows execution of allowlisted MCP tools.",
+        tenant_id: null,
+        created_at: now,
+        updated_at: now,
+      } satisfies StoreRecord);
+    } catch (error) {
+      if (!(error instanceof StoreConflictError)) throw error;
+      permission = await deps.store.get(PERMISSIONS_COLLECTION, PLATFORM, MCP_EXECUTE_PERMISSION_ID);
+      if (permission === null) throw error;
+    }
+  }
+  await projectPermission(controlDb, permission, now);
 
   let role = await deps.store.get(ROLES_COLLECTION, PLATFORM, DEFAULT_MCP_EXECUTION_ROLE_ID);
   if (role === null) {

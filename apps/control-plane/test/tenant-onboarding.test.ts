@@ -301,6 +301,12 @@ describe("POST /v1/admin/register (console self-service)", () => {
 
     // A newly registered tenant must receive the separate MCP execution
     // entitlement in the SAME durable tenant storage the MCP Worker reads.
+    const declaredPermission = await db()
+      .prepare("SELECT key FROM permissions WHERE id = ?")
+      .bind("platform-mcp-execute")
+      .first<{ key: string }>();
+    expect(declaredPermission?.key).toBe("mcp.execute");
+
     const defaultRole = await handle.db
       .prepare(
         "SELECT permission_keys_json FROM tenant_role_catalog WHERE role_id = ?",
