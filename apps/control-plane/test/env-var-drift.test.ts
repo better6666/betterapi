@@ -380,7 +380,7 @@ describe("the env-var drift gate itself", () => {
   });
 
   it("inlined the committed wrangler.toml, not a fixture", () => {
-    expect(WRANGLER_TOML).toContain('name = "ferrogate-control-plane"');
+    expect(WRANGLER_TOML).toContain('name = "betterapi-control-plane"');
     // The same bytes `vitest.config.ts` binds for `test/cron-trigger.test.ts`.
     // Asserting they agree keeps the two config gates from ever reading
     // different files.

@@ -1,4 +1,4 @@
-name = "ferrogate-gateway"
+name = "betterapi-gateway"
 main = "src/worker.ts"
 
 # Unchanged from the scaffold: nothing declared below needs a newer runtime.
@@ -1068,8 +1068,8 @@ BILLING_ALERTS_WEBHOOK_TIMEOUT_SECS = "5"
 # ---------------------------------------------------------------------------
 [[r2_buckets]]
 binding = "ASSETS"
-bucket_name = "replace-at-deploy-ferrogate-assets"
-preview_bucket_name = "replace-at-deploy-ferrogate-assets-preview"
+bucket_name = "betterapi-assets"
+preview_bucket_name = "betterapi-assets-preview"
 
 # ---------------------------------------------------------------------------
 # KV — prompt deployment labels, `label -> revision` (#694)
@@ -1094,7 +1094,7 @@ preview_bucket_name = "replace-at-deploy-ferrogate-assets-preview"
 # namespace `apps/control-plane` writes to.
 [[kv_namespaces]]
 binding = "PROMPT_LABELS"
-id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
+id = "26b439ae8d9a4556bd0152e43bccfe00"
 
 # ---------------------------------------------------------------------------
 # KV: the api_key_directory PROJECTION — the auth hot-path READ side (#882)
@@ -1122,7 +1122,7 @@ id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
 # `apps/control-plane` writes to.
 [[kv_namespaces]]
 binding = "KEY_DIRECTORY"
-id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
+id = "d1ed27d505ce43cf9614d90a7c95f568"
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
@@ -1183,7 +1183,7 @@ id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
 # ---------------------------------------------------------------------------
 [[queues.producers]]
 binding = "BILLING"
-queue = "replace-at-deploy-ferrogate-billing-reports"
+queue = "betterapi-billing-reports"
 
 # ---------------------------------------------------------------------------
 # Queues — the request-log fan-in  (#664)
@@ -1225,14 +1225,14 @@ queue = "replace-at-deploy-ferrogate-billing-reports"
 # ---------------------------------------------------------------------------
 [[queues.producers]]
 binding = "REQUEST_LOG"
-queue = "replace-at-deploy-ferrogate-request-logs"
+queue = "betterapi-request-logs"
 
 [[queues.consumers]]
-queue = "replace-at-deploy-ferrogate-request-logs"
+queue = "betterapi-request-logs"
 max_batch_size = 100
 max_batch_timeout = 5
 max_retries = 5
-dead_letter_queue = "replace-at-deploy-ferrogate-request-logs-dlq"
+dead_letter_queue = "betterapi-request-logs-dlq"
 
 # ---------------------------------------------------------------------------
 # Queues — the online-evaluation sample fan-in  (#692)
@@ -1269,14 +1269,14 @@ dead_letter_queue = "replace-at-deploy-ferrogate-request-logs-dlq"
 # ---------------------------------------------------------------------------
 [[queues.producers]]
 binding = "ONLINE_EVAL"
-queue = "replace-at-deploy-ferrogate-online-eval"
+queue = "betterapi-online-eval"
 
 [[queues.consumers]]
-queue = "replace-at-deploy-ferrogate-online-eval"
+queue = "betterapi-online-eval"
 max_batch_size = 10
 max_batch_timeout = 30
 max_retries = 2
-dead_letter_queue = "replace-at-deploy-ferrogate-online-eval-dlq"
+dead_letter_queue = "betterapi-online-eval-dlq"
 
 # ---------------------------------------------------------------------------
 # Queues — tenant Durable Object schedule alarms (#856)
@@ -1287,7 +1287,7 @@ dead_letter_queue = "replace-at-deploy-ferrogate-online-eval-dlq"
 # ---------------------------------------------------------------------------
 [[queues.producers]]
 binding = "SCHEDULE_ALARMS"
-queue = "replace-at-deploy-ferrogate-schedule-alarms"
+queue = "betterapi-schedule-alarms"
 
 # ---------------------------------------------------------------------------
 # Queues — the batch-job executor  (#698, slices 2/3)
@@ -1327,14 +1327,14 @@ queue = "replace-at-deploy-ferrogate-schedule-alarms"
 # ---------------------------------------------------------------------------
 [[queues.producers]]
 binding = "BATCH_JOBS"
-queue = "replace-at-deploy-ferrogate-batch-jobs"
+queue = "betterapi-batch-jobs"
 
 [[queues.consumers]]
-queue = "replace-at-deploy-ferrogate-batch-jobs"
+queue = "betterapi-batch-jobs"
 max_batch_size = 1
 max_batch_timeout = 5
 max_retries = 2
-dead_letter_queue = "replace-at-deploy-ferrogate-batch-jobs-dlq"
+dead_letter_queue = "betterapi-batch-jobs-dlq"
 
 # ---------------------------------------------------------------------------
 # Durable Objects — the rate-limit / quota counters
@@ -1513,7 +1513,7 @@ storage = "sqlite"
 # ---------------------------------------------------------------------------
 [[services]]
 binding = "TELEMETRY_COLLECTOR"
-service = "ferrogate-telemetry"
+service = "betterapi-telemetry"
 
 # ---------------------------------------------------------------------------
 # [ai] — Workers AI (issue #673)
@@ -1608,7 +1608,7 @@ binding = "AI"
 # ---------------------------------------------------------------------------
 [[analytics_engine_datasets]]
 binding = "BILLING_ANALYTICS"
-dataset = "PLACEHOLDER_ferrogate_billing"
+dataset = "betterapi-billing"
 
 # ---------------------------------------------------------------------------
 # Cron — the billing-outbox recovery sweep

@@ -1,4 +1,4 @@
-name = "ferrogate-mcp"
+name = "betterapi-mcp"
 main = "src/worker.ts"
 
 # Nothing declared below needs a newer runtime. `nodejs_compat` is what `hono`
@@ -83,7 +83,7 @@ MCP_CONTROL_STORAGE = "durable_object"
 # ---------------------------------------------------------------------------
 [[kv_namespaces]]
 binding = "MCP_OAUTH_KV"
-id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
+id = "38c8353df0714ee39a317f1b900a083a"
 
 # ---------------------------------------------------------------------------
 # DURABLE OBJECTS — the atomic single-use claim on an in-flight OAuth flow
@@ -183,12 +183,12 @@ class_name = "FerroGateMcpUnifiedSession"
 [[durable_objects.bindings]]
 name = "TENANT_DATA"
 class_name = "TenantDataObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 [[durable_objects.bindings]]
 name = "CONTROL_DATA"
 class_name = "ControlDataObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 [[migrations]]
 tag = "v1"
@@ -269,8 +269,8 @@ new_sqlite_classes = ["FerroGateMcpUnifiedSession"]
 # ---------------------------------------------------------------------------
 [[r2_buckets]]
 binding = "ASSETS"
-bucket_name = "replace-at-deploy-ferrogate-assets"
-preview_bucket_name = "replace-at-deploy-ferrogate-assets-preview"
+bucket_name = "betterapi-assets"
+preview_bucket_name = "betterapi-assets-preview"
 
 # ===========================================================================
 # NOT DECLARED — and why
@@ -350,7 +350,7 @@ preview_bucket_name = "replace-at-deploy-ferrogate-assets-preview"
 [[durable_objects.bindings]]
 name = "RATE_LIMIT"
 class_name = "RateLimiterDurableObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 # ---------------------------------------------------------------------------
 # HOW THE OFFLINE HARNESS RESOLVES THE LINE ABOVE

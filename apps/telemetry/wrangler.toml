@@ -1,4 +1,4 @@
-name = "ferrogate-telemetry"
+name = "betterapi-telemetry"
 main = "src/worker.ts"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
@@ -20,7 +20,7 @@ compatibility_flags = ["nodejs_compat"]
 # rather than crashing on an undefined binding.
 [[analytics_engine_datasets]]
 binding = "TELEMETRY"
-dataset = "PLACEHOLDER_ferrogate_telemetry"
+dataset = "betterapi-telemetry"
 
 [vars]
 # Per-request OTLP body ceiling in BYTES, as a string (Worker vars are strings).

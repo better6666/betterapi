@@ -427,7 +427,7 @@ export class D1RbacAuthorizer implements RbacAuthorizerPort {
 // Runtime status + metrics
 // ---------------------------------------------------------------------------
 
-export const SERVICE_NAME = "ferrogate-control-plane";
+export const SERVICE_NAME = "betterapi-control-plane";
 
 type OverviewRow = Record<string, unknown>;
 type OverviewScope = CallerScope;

@@ -1,4 +1,4 @@
-name = "ferrogate-control-plane"
+name = "betterapi-control-plane"
 main = "src/worker.ts"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
@@ -268,7 +268,7 @@ SPEND_ANOMALY_WEBHOOK_TIMEOUT_SECS = "5"
 # loudly, but universally. See `docs/rewrite/CLOUD-VERIFICATION.md`.
 [[kv_namespaces]]
 binding = "PROMPT_LABELS"
-id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
+id = "26b439ae8d9a4556bd0152e43bccfe00"
 
 # ---------------------------------------------------------------------------
 # KV: the api_key_directory PROJECTION — the auth hot-path WRITE side (#882)
@@ -292,7 +292,7 @@ id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
 # `id` is a DOCUMENTED PLACEHOLDER — substitute the SAME namespace the gateway reads.
 [[kv_namespaces]]
 binding = "KEY_DIRECTORY"
-id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
+id = "d1ed27d505ce43cf9614d90a7c95f568"
 
 # ---------------------------------------------------------------------------
 # R2: the tamper-evidence ANCHOR bucket (#684)
@@ -329,7 +329,7 @@ id = "PLACEHOLDER_SET_AT_DEPLOY_TIME"
 # account's real bucket. R2 names are lowercase alphanumerics and hyphens.
 [[r2_buckets]]
 binding = "AUDIT_ANCHORS"
-bucket_name = "replace-at-deploy-ferrogate-audit-anchors"
+bucket_name = "betterapi-audit-anchors"
 
 # ---------------------------------------------------------------------------
 # R2: the SIEM EXPORT bucket (#683)
@@ -354,7 +354,7 @@ bucket_name = "replace-at-deploy-ferrogate-audit-anchors"
 # account's real bucket.
 [[r2_buckets]]
 binding = "SIEM_EXPORTS"
-bucket_name = "replace-at-deploy-ferrogate-siem-exports"
+bucket_name = "betterapi-siem-exports"
 
 # ---------------------------------------------------------------------------
 # R2: the ASSET bucket — the operator FORCE-DELETE, and nothing else (#743)
@@ -390,7 +390,7 @@ bucket_name = "replace-at-deploy-ferrogate-siem-exports"
 # account's real bucket, which must match the gateway's.
 [[r2_buckets]]
 binding = "ASSETS"
-bucket_name = "replace-at-deploy-ferrogate-assets"
+bucket_name = "betterapi-assets"
 
 # ---------------------------------------------------------------------------
 # ENTERPRISE IDENTITY (wave 18) — the deploy-time secrets, as PLACEHOLDERS
@@ -525,11 +525,11 @@ crons = ["* * * * *"]
 # scans the fleet schedule collection from the Cron path.
 # ---------------------------------------------------------------------------
 [[queues.consumers]]
-queue = "replace-at-deploy-ferrogate-schedule-alarms"
+queue = "betterapi-schedule-alarms"
 max_batch_size = 100
 max_batch_timeout = 5
 max_retries = 5
-dead_letter_queue = "replace-at-deploy-ferrogate-schedule-alarms-dlq"
+dead_letter_queue = "betterapi-schedule-alarms-dlq"
 # --- Workers Observability ---------------------------------------------------
 # Owner directive (2026-08-02): enable Workers Observability on the whole fleet
 # so production behaviour can be read back from the CLI (`wrangler tail`) and the
@@ -598,9 +598,9 @@ enabled = true
 [[durable_objects.bindings]]
 name = "TENANT_DATA"
 class_name = "TenantDataObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 [[durable_objects.bindings]]
 name = "CONTROL_DATA"
 class_name = "ControlDataObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"

@@ -9,7 +9,7 @@ import {
   readinessReport,
 } from "../src/routes/health.js";
 
-const SERVICE = "ferrogate-control-plane";
+const SERVICE = "betterapi-control-plane";
 
 /**
  * The bindings a deployment WITHOUT a control database actually has.

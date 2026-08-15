@@ -209,7 +209,7 @@ describe("runtime status (real D1)", () => {
 
   it("still answers when a sub-source cannot be read (status is the debugging endpoint)", async () => {
     const body = await status();
-    expect(body.service).toBe("ferrogate-control-plane");
+    expect(body.service).toBe("betterapi-control-plane");
     // Rust reports `"pingora"`; this data plane is a Worker and says so.
     expect(body.runtime).toBe("workers");
     expect(body.auth_required).toBe(true);

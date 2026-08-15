@@ -1,4 +1,4 @@
-name = "ferrogate-agent-runtime"
+name = "betterapi-agent-runtime"
 main = "src/worker.ts"
 
 # `enable_ctx_exports` (#471) is REQUIRED for the governed-egress path:
@@ -56,7 +56,7 @@ class_name = "WorkerPlane"
 [[durable_objects.bindings]]
 name = "TENANT_DATA"
 class_name = "TenantDataObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 # Zero-D1 S5 (#881): the singleton CONTROL object, bound cross-script from the
 # gateway script. The backfill/cut-over is done — AGENT_RUNTIME_CONTROL_STORAGE
@@ -64,7 +64,7 @@ script_name = "ferrogate-gateway"
 [[durable_objects.bindings]]
 name = "CONTROL_DATA"
 class_name = "ControlDataObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 # DO storage is the per-instance embedded SQLite backend (`new_sqlite_classes`,
 # NOT `new_classes`) — same requirement the Agents SDK has.
@@ -211,7 +211,7 @@ FG_DEV_A2A_GUARDRAILS = ""
 [[durable_objects.bindings]]
 name = "RATE_LIMIT"
 class_name = "RateLimiterDurableObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 # ---------------------------------------------------------------------------
 # HOW THE OFFLINE HARNESS RESOLVES THE LINE ABOVE
@@ -304,12 +304,12 @@ class_name = "WorkerPlane"
 [[env.unit.durable_objects.bindings]]
 name = "TENANT_DATA"
 class_name = "TenantDataObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 [[env.unit.durable_objects.bindings]]
 name = "RATE_LIMIT"
 class_name = "RateLimiterDurableObject"
-script_name = "ferrogate-gateway"
+script_name = "betterapi-gateway"
 
 [env.unit.vars]
 AGENT_RUNTIME_CONTROL_STORAGE = "durable_object"

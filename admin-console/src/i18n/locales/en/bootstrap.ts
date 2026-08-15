@@ -19,7 +19,7 @@ export const enBootstrap = {
 
   // A couple of genuinely shared strings, to seed the `common.*` namespace and
   // prove interpolation/pluralization end to end.
-  "common.appName": "FerroGate Admin Console",
+  "common.appName": "BetterAPI Admin Console",
   "common.selected": "{count} selected",
 
   // Shared status/state copy reused across migrated surfaces (#348).
@@ -75,9 +75,9 @@ export const enBootstrap = {
   "auth.register.loginLink": "Sign in",
 
   // App shell chrome — breadcrumb, skip link, sidebar brand, sign-out (#348).
-  "shell.breadcrumb.root": "FerroGate Admin",
+  "shell.breadcrumb.root": "BetterAPI Admin",
   "shell.skipToContent": "Skip to main content",
-  "shell.brand.name": "FerroGate",
+  "shell.brand.name": "BetterAPI",
   "shell.brand.tagline": "Admin Console",
   "shell.logout": "Log out",
 

@@ -17,7 +17,7 @@ export const zhCN = {
   "language.change": "切换语言",
   "language.current": "当前语言：{name}。切换语言",
 
-  "common.appName": "FerroGate 管理控制台",
+  "common.appName": "BetterAPI 管理控制台",
   "common.selected": "已选择 {count} 项",
 
   "common.status": "状态",
@@ -172,9 +172,9 @@ export const zhCN = {
   "dashboard.res.policyRules": "策略规则",
   "dashboard.action.viewResource": "查看{resource}",
 
-  "shell.breadcrumb.root": "FerroGate 管理",
+  "shell.breadcrumb.root": "BetterAPI 管理",
   "shell.skipToContent": "跳转到主要内容",
-  "shell.brand.name": "FerroGate",
+  "shell.brand.name": "BetterAPI",
   "shell.brand.tagline": "管理控制台",
   "shell.logout": "退出登录",
 
@@ -717,7 +717,7 @@ export const zhCN = {
   "resource.mcpServers.field.enabled": "已启用",
   "resource.mcpServers.field.config": "完整服务器配置（JSON）",
   "resource.mcpServers.field.config.desc":
-    "按 ferrogate-mcp::McpServerConfig 的传输、鉴权、TLS 与端点字段。",
+    "按 betterapi-mcp::McpServerConfig 的传输、鉴权、TLS 与端点字段。",
 
   "resource.selfHostedWorkers.title": "自托管工作节点",
   "resource.selfHostedWorkers.description":
