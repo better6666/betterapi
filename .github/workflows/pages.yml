@@ -42,6 +42,7 @@ jobs:
         working-directory: admin-console
         env:
           VITE_BASE_PATH: /betterapi/
+          VITE_PAGES_REDIRECT_ORIGIN: https://betterapi-control-plane.2333333434.workers.dev
         run: |
           npm run build
           cp dist/index.html dist/404.html

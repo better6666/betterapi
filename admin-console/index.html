@@ -8,6 +8,25 @@
     <title>BetterAPI Admin Console</title>
     <script>
       (() => {
+        const controlPlaneOrigin = "%VITE_PAGES_REDIRECT_ORIGIN%";
+        const hasControlPlaneOrigin = /^https?:\/\//.test(controlPlaneOrigin);
+        if (
+          controlPlaneOrigin &&
+          hasControlPlaneOrigin &&
+          window.location.origin !== controlPlaneOrigin
+        ) {
+          const basePath = "%BASE_URL%";
+          const targetPath = window.location.pathname.startsWith(basePath)
+            ? window.location.pathname.slice(basePath.length - 1)
+            : window.location.pathname;
+          window.location.replace(
+            `${controlPlaneOrigin}${targetPath}${window.location.search}${window.location.hash}`,
+          );
+        }
+      })();
+    </script>
+    <script>
+      (() => {
         const storageKey = "betterapi-admin-theme-v1";
         let preference = "system";
         try {
@@ -18,7 +37,6 @@
         } catch {
           // Storage can be unavailable in privacy-restricted contexts.
         }
-
         const systemDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
         const resolved = preference === "system" ? (systemDark ? "dark" : "light") : preference;
         const root = document.documentElement;
