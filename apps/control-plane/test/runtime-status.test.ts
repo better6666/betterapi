@@ -241,7 +241,22 @@ describe("runtime status (real D1)", () => {
     }
   });
 });
-
+describe("runtime overview availability", () => {
+  it("keeps runtime and asset inventory readable when the deployment has no active config or assets", async () => {
+    await resetD1();
+    arm({ staticKeys: [operatorKey], store: "d1" });
+    const response = await SELF.fetch(`${BASE}/admin/v1/overview`, { headers: bearer(KEY) });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, Record<string, unknown>>;
+    expect(body.runtime?.status).toBe("ok");
+    expect(body.control_plane?.status).toBe("ok");
+    const runtime = body.runtime?.data as Record<string, unknown>;
+    expect(runtime.upstreams).toEqual({ total: 0, enabled: 0 });
+    expect(runtime.routes).toEqual({ total: 0, enabled: 0 });
+    const control = body.control_plane?.data as Record<string, unknown>;
+    expect(control.assets).toMatchObject({ count: 0, storage_bytes: 0 });
+  });
+});
 describe("PLATFORM LIMIT: a config reload cannot swap a live isolate's snapshot", () => {
   beforeEach(async () => {
     await resetD1();

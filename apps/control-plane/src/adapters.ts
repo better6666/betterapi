@@ -87,6 +87,7 @@ import {
 } from "./store/lifecycle.js";
 import { MemoryControlPlaneStore, type MemoryStoreSeed } from "./store/memory.js";
 import { PlatformModelCatalogStore } from "./store/platform-model-catalog.js";
+import { readFleetAssets } from "./store/asset_fleet.js";
 import { SplitControlPlaneStore } from "./store/split.js";
 import { UnprovisionedTenantDatabaseRouter } from "./store/tenancy.js";
 
@@ -807,6 +808,43 @@ export class StoreRuntimeStatus implements RuntimeStatusPort {
     return null;
   }
 
+  /** Read upstream and route counters from the active gateway-config snapshot. */
+  async #activeGatewayRuntimeRows(): Promise<{
+    readonly upstreams: OverviewRow[];
+    readonly routes: OverviewRow[];
+  }> {
+    const platform = { kind: "platform_operator" } as const;
+    const active = await this.#store.get("runtime-state", platform, "active-config");
+    const gatewayConfigId = overviewString(active?.gateway_config_id);
+    if (gatewayConfigId === undefined) return { upstreams: [], routes: [] };
+    const candidate = await this.#store.get("gateway-configs", platform, gatewayConfigId);
+    if (candidate === null) return { upstreams: [], routes: [] };
+    const raw =
+      typeof candidate.config === "object" && candidate.config !== null
+        ? candidate.config
+        : candidate;
+    const config = raw as Record<string, unknown>;
+    const rows = (field: "upstreams" | "routes"): OverviewRow[] => {
+      const value = config[field];
+      return Array.isArray(value)
+        ? value.filter((row): row is OverviewRow => typeof row === "object" && row !== null)
+        : [];
+    };
+    return { upstreams: rows("upstreams"), routes: rows("routes") };
+  }
+  /** Read asset inventory from authoritative per-tenant stored_assets tables. */
+  async #overviewAssetRows(scope: OverviewScope): Promise<OverviewRow[]> {
+    const router = this.#tenantDatabases;
+    if (router === null) return [];
+    const tenantIds = scope.kind === "tenant" ? [scope.tenantId] : await router.provisionedTenants();
+    const page = await readFleetAssets(router, tenantIds, {}, "stored_asset", {
+      failOnUnreachable: scope.kind === "tenant",
+    });
+    if (page.unreadableTenants.length > 0) {
+      throw new Error("one or more tenant asset stores are unavailable");
+    }
+    return page.rows.map((row) => ({ ...row, storage_bytes: row.size_bytes }));
+  }
   #availableOverviewSection(
     source: string,
     generatedAtUnix: number,
@@ -843,14 +881,13 @@ export class StoreRuntimeStatus implements RuntimeStatusPort {
     generatedAtUnix: number,
   ): Promise<OverviewRow> {
     try {
-      const [providers, models, apiKeys, promptTemplates, upstreams, routes, plugins, tools, mcp] =
+      const [providers, models, apiKeys, promptTemplates, gatewayRuntime, plugins, tools, mcp] =
         await Promise.all([
           this.#overviewRows("providers", scope),
           this.#overviewRows("models", scope),
           this.#overviewRows("api-keys", scope),
           this.#overviewRows("prompt-templates", scope),
-          this.#overviewRows("upstreams", scope),
-          this.#overviewRows("routes", scope),
+          this.#activeGatewayRuntimeRows(),
           this.#overviewRowsFrom(["plugins", "extensions"], scope),
           this.#overviewRows("tools", scope),
           this.#overviewRowsFrom(["mcp-servers", "mcp_servers"], scope),
@@ -864,8 +901,8 @@ export class StoreRuntimeStatus implements RuntimeStatusPort {
         models: enabledCount(models),
         static_api_keys: apiKeys.length,
         prompt_templates: promptTemplates.length,
-        upstreams: enabledCount(upstreams),
-        routes: enabledCount(routes),
+        upstreams: enabledCount(gatewayRuntime.upstreams),
+        routes: enabledCount(gatewayRuntime.routes),
         plugins: activeCount(plugins ?? []),
         tools: tools.length,
         mcp_servers: {
@@ -900,7 +937,7 @@ export class StoreRuntimeStatus implements RuntimeStatusPort {
         this.#overviewRows("projects", scope),
         this.#overviewRows("workspaces", scope),
         this.#overviewRowsFrom(["virtual-keys", "api-keys"], scope),
-        this.#overviewRowsFrom(["assets", "stored-assets", "stored_assets"], scope),
+        this.#overviewAssetRows(scope),
         this.#overviewRowsFrom(["agent-runs", "agent_jobs"], scope),
         this.#overviewRowsFrom(["self-hosted-workers", "self_hosted_workers"], scope),
         this.#overviewRowsFrom(["tool-approvals", "tool_approvals"], scope),
